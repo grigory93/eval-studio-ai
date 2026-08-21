@@ -20,6 +20,7 @@ Users provide plain-English requirements, user stories, policy documents (PDF/Ma
 * **Comprehensive Multi-Category Test Suites**: Synthesizes balanced datasets covering happy paths, edge cases, adversarial attacks, tool usage, exceptions/error handling, and policy compliance.
 * **Proactive Diagnostic Scorer Compilation**: Compiles multi-scorer evaluation tasks that automatically collect categorized metrics (`grouped()`), tool selection accuracy, and policy compliance for downstream diagnostics.
 * **User-Centric Workflow Visualization**: Renders the evaluation process as high-level business Mermaid.js sequence and flow diagrams (Personas → Target Agent → Tools → Evaluator Judge).
+* **Repeatable Evaluation & Regression Quality Gates**: Persists evaluation suites and historical run logs to enable one-click re-evaluation and side-by-side comparative regression analysis when target agent code or prompts are updated.
 * **Closed-Loop Actionable Diagnostics**: Ingests execution transcripts and translates raw evaluation logs into categorized failure clusters, root causes, and copy-pasteable prompt/tool recommendations.
 
 ---
@@ -118,8 +119,8 @@ flowchart TD
 * **Input**: Business story and/or use case (plain text prompts), uploaded policy documents (PDF, Markdown, Text), user stories, target agent description, and known tools/APIs.
 * **Process**:
   1. Analyzes domain rules, boundaries, and expected agent behavior.
-  2. Detects ambiguous clauses, missing edge-case handling, unspecified tool behaviors, or conflicting business policies.
-  3. Formulates targeted clarification questions for the user in the UI.
+  2. **Socratic Knowledge Probing**: Proactively probes unstated edge cases, exception handling, and hard business constraints (e.g. "What if the item is opened?", "What if the user is unauthenticated or abusive?").
+  3. Formulates targeted clarification questions in the UI and converts user answers directly into formal evaluation criteria and rubrics.
 * **Output**: Structured requirement schema and confirmed evaluation criteria (the foundation for dataset synthesis and task compilation).
 
 ### 5.2 Dataset Synthesizer Agent
@@ -171,8 +172,9 @@ flowchart TD
   1. **KPI Aggregation**: Extracts top-line metrics (Overall Pass Rate, Category Pass Rates, Policy Adherence %, Tool Accuracy %, Latency, Token Cost).
   2. **Failure Clustering**: Groups failed and errored samples into semantic clusters (e.g. "Policy Rule Misinterpretation", "Tool Argument Schema Mismatch", "Incomplete Exception Handling", "Adversarial Prompt Vulnerability").
   3. **Root-Cause Analysis**: Correlates judge reasoning, conversation transcripts, and tool traces to pinpoint exact prompt deficiencies or tool schema bugs.
-  4. **Actionable Recommendations**: Generates concrete, copy-pasteable prompt modifications, tool schema fixes, and boundary constraints.
-* **Output**: Structured `ExecutiveScorecardReport` schema.
+  4. **Comparative Regression Analysis**: When comparing against a previous baseline run, computes per-category score deltas, flags newly regressed test samples, and highlights fixed issues.
+  5. **Actionable Recommendations**: Generates concrete, copy-pasteable prompt modifications, tool schema fixes, and boundary constraints.
+* **Output**: Structured `ExecutiveScorecardReport` schema (with optional `ComparativeRunDelta`).
 
 ---
 
@@ -203,6 +205,9 @@ eval-studio-ai/
 │   │   │   ├── bridge.py             # ADK local agent loader & bridge wrapper
 │   │   │   ├── scorers.py            # Custom diagnostic scorers (ToolVerification, PolicyAdherence)
 │   │   │   └── log_parser.py         # EvalLog extractor & metrics aggregator
+│   │   │
+│   │   ├── storage/                  # Persistent Suite & Run Storage
+│   │   │   └── suite_store.py        # Local JSON / SQLite store for eval suites & run history
 │   │   │
 │   │   ├── models/                   # Pydantic Schemas & Data Contracts (Inspect AI Compatible)
 │   │   │   ├── elicitation.py        # Ingestion & clarification schemas
@@ -348,11 +353,21 @@ class SampleInspectionResult(BaseModel):
     error_message: Optional[str] = None
     full_transcript: List[Dict[str, Any]]
 
+class ComparativeRunDelta(BaseModel):
+    baseline_eval_id: str
+    baseline_timestamp: str
+    overall_pass_rate_delta: float
+    category_deltas: Dict[str, float]
+    newly_failed_sample_ids: List[str]
+    newly_passed_sample_ids: List[str]
+
 class ExecutiveScorecardReport(BaseModel):
     eval_id: str
+    suite_id: str
     task_name: str
     timestamp: str
     metrics: MetricSummary
+    comparative_delta: Optional[ComparativeRunDelta] = None
     executive_summary: str
     failure_clusters: List[FailureCluster]
     actionable_recommendations: List[str]

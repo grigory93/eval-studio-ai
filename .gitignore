@@ -26,3 +26,5 @@ frontend/dist/
 *.eval
 eval_logs/
 .inspect/
+data/
+backend/data/

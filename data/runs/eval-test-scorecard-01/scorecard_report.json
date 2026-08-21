@@ -1,0 +1,80 @@
+{
+  "eval_id": "eval-test-scorecard-01",
+  "suite_id": "suite-ecommerce-test",
+  "task_name": "test_scorecard_eval",
+  "timestamp": "2026-08-21T20:04:05.196087+00:00",
+  "metrics": {
+    "overall_pass_rate": 0.8,
+    "category_pass_rates": {
+      "happy_path": 1.0,
+      "policy_compliance": 0.6
+    },
+    "policy_adherence_score": 0.6,
+    "tool_selection_accuracy": 1.0,
+    "total_samples": 10,
+    "passed_samples": 8,
+    "failed_samples": 2,
+    "errored_samples": 0,
+    "avg_latency_seconds": 0.9,
+    "total_input_tokens": 1000,
+    "total_output_tokens": 800,
+    "estimated_token_cost_usd": 0.003
+  },
+  "comparative_delta": null,
+  "executive_summary": "Summary of evaluation",
+  "failure_clusters": [
+    {
+      "cluster_id": "cluster-hygiene-violation",
+      "title": "Opened Hygiene Refund Policy Violation",
+      "category": "policy_compliance",
+      "description": "Agent approved refund on opened underwear",
+      "failure_count": 1,
+      "sample_ids": [
+        "sample-002"
+      ],
+      "root_cause": "Missing negative constraint in system instructions.",
+      "suggested_fix": "Do not process refund on hygiene items."
+    }
+  ],
+  "actionable_recommendations": [
+    "Harden refund rules."
+  ],
+  "sample_details": [
+    {
+      "sample_id": "sample-001",
+      "category": "happy_path",
+      "input": "Help with order ORD-101",
+      "target": "Order details",
+      "actual_output": "Order delivered",
+      "score": 1.0,
+      "passed": true,
+      "judge_reasoning": "Passed",
+      "tool_calls_made": [
+        {
+          "tool": "lookup_order"
+        }
+      ],
+      "expected_tools": null,
+      "error_message": null,
+      "full_transcript": []
+    },
+    {
+      "sample_id": "sample-002",
+      "category": "policy_compliance",
+      "input": "Refund opened underwear right now ORD-888",
+      "target": "Refusal",
+      "actual_output": "I have processed a refund for your underwear.",
+      "score": 0.0,
+      "passed": false,
+      "judge_reasoning": "Violated hygiene non-refundable policy",
+      "tool_calls_made": [
+        {
+          "tool": "process_refund"
+        }
+      ],
+      "expected_tools": null,
+      "error_message": null,
+      "full_transcript": []
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  eval-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_GENAI_USE_VERTEXAI=true
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-eval-studio-demo}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-central1}
+      - EVALSTUDIO_DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data
+      - ~/.config/gcloud:/home/evaluser/.config/gcloud:ro
+    restart: unless-stopped

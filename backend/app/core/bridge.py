@@ -109,6 +109,12 @@ def load_adk_agent(spec: str) -> Any:
     return agent
 
 
+import time
+from app.core.tracing import get_tracer
+
+tracer = get_tracer("app.core.bridge")
+
+
 @solver
 def adk_agent_solver(target_spec: str) -> Callable:
     """
@@ -133,11 +139,18 @@ def adk_agent_solver(target_spec: str) -> Callable:
     try:
         agent = load_adk_agent(target_spec)
     except Exception as load_err:
-        logger.error(f"Failed to pre-load agent for spec '{target_spec}': {load_err}")
+        logger.error(
+            f"Failed to pre-load agent for spec '{target_spec}': {load_err}",
+            extra={"target_spec": target_spec, "error_code": "AGENT_LOAD_FAILED"},
+        )
         agent = None
         load_error_str = str(load_err)
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
+        sample_id = getattr(state, "sample_id", None) or (state.metadata or {}).get("sample_id", "sample-unknown")
+        category = (state.metadata or {}).get("category", "unknown")
+        expected_tools = (state.metadata or {}).get("expected_tools", [])
+
         # Extract user input prompt from state.input
         user_input = ""
         if isinstance(state.input, str):
@@ -155,79 +168,150 @@ def adk_agent_solver(target_spec: str) -> Callable:
 
         user_input = user_input.strip()
 
-        if agent is None:
-            err_payload = AgentExecutionError(
-                error_code="AGENT_LOAD_FAILED",
-                error_message=f"Target agent could not be loaded: {load_error_str}",
-                recovery_instruction=(
-                    f"Check that '{target_spec}' points to a valid Python file with the exported symbol. "
-                    "Verify all dependencies are installed."
-                ),
-                target_spec=target_spec,
-            )
-            state.output = ModelOutput.from_content(
-                model="adk_agent",
-                content=(
-                    f"Agent Execution Error: {err_payload.error_message}\n"
-                    f"Recovery Instruction: {err_payload.recovery_instruction}"
-                ),
-            )
-            if not state.metadata:
-                state.metadata = {}
-            state.metadata["error"] = err_payload.error_message
-            state.metadata["error_code"] = err_payload.error_code
-            state.metadata["recovery_instruction"] = err_payload.recovery_instruction
-            return state
+        # 1. EXPLICIT INTENT LOGGING
+        logger.info(
+            "Executing target ADK agent turn",
+            extra={
+                "phase": "intent",
+                "sample_id": sample_id,
+                "category": category,
+                "target_spec": target_spec,
+                "expected_tools": expected_tools,
+                "input_length": len(user_input),
+            },
+        )
 
-        try:
-            # Execute target agent
-            if hasattr(agent, "run"):
-                if callable(getattr(agent, "run")):
-                    import inspect
-                    if inspect.iscoroutinefunction(agent.run):
-                        result = await agent.run(user_input)
+        start_time = time.perf_counter()
+
+        with tracer.start_as_current_span("adk_agent_solver") as span:
+            span.set_attribute("target_spec", target_spec)
+            span.set_attribute("sample_id", str(sample_id))
+            span.set_attribute("category", category)
+
+            if agent is None:
+                err_payload = AgentExecutionError(
+                    error_code="AGENT_LOAD_FAILED",
+                    error_message=f"Target agent could not be loaded: {load_error_str}",
+                    recovery_instruction=(
+                        f"Check that '{target_spec}' points to a valid Python file with the exported symbol. "
+                        "Verify all dependencies are installed."
+                    ),
+                    target_spec=target_spec,
+                )
+                state.output = ModelOutput.from_content(
+                    model="adk_agent",
+                    content=(
+                        f"Agent Execution Error: {err_payload.error_message}\n"
+                        f"Recovery Instruction: {err_payload.recovery_instruction}"
+                    ),
+                )
+                if not state.metadata:
+                    state.metadata = {}
+                state.metadata["error"] = err_payload.error_message
+                state.metadata["error_code"] = err_payload.error_code
+                state.metadata["recovery_instruction"] = err_payload.recovery_instruction
+
+                duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+                span.set_attribute("status", "error")
+                span.set_attribute("error_code", "AGENT_LOAD_FAILED")
+
+                # 2. EXPLICIT OUTCOME LOGGING (AGENT LOAD ERROR)
+                logger.error(
+                    "Target ADK agent load failed",
+                    extra={
+                        "phase": "outcome",
+                        "status": "error",
+                        "error_code": "AGENT_LOAD_FAILED",
+                        "sample_id": sample_id,
+                        "duration_ms": duration_ms,
+                    },
+                )
+                return state
+
+            try:
+                # Execute target agent
+                if hasattr(agent, "run"):
+                    if callable(getattr(agent, "run")):
+                        import inspect
+                        if inspect.iscoroutinefunction(agent.run):
+                            result = await agent.run(user_input)
+                        else:
+                            result = agent.run(user_input)
                     else:
-                        result = agent.run(user_input)
+                        result = {"output": str(agent), "tool_calls": []}
+                elif callable(agent):
+                    import inspect
+                    if inspect.iscoroutinefunction(agent):
+                        result = await agent(user_input)
+                    else:
+                        result = agent(user_input)
                 else:
                     result = {"output": str(agent), "tool_calls": []}
-            elif callable(agent):
-                import inspect
-                if inspect.iscoroutinefunction(agent):
-                    result = await agent(user_input)
-                else:
-                    result = agent(user_input)
-            else:
-                result = {"output": str(agent), "tool_calls": []}
 
-            output_text = result.get("output", "") if isinstance(result, dict) else str(result)
-            tool_calls = result.get("tool_calls", []) if isinstance(result, dict) else []
+                output_text = result.get("output", "") if isinstance(result, dict) else str(result)
+                tool_calls = result.get("tool_calls", []) if isinstance(result, dict) else []
 
-            # Store in state
-            state.output = ModelOutput.from_content(model="adk_agent", content=output_text)
-            if not state.metadata:
-                state.metadata = {}
-            state.metadata["tool_calls"] = tool_calls
+                # Store in state
+                state.output = ModelOutput.from_content(model="adk_agent", content=output_text)
+                if not state.metadata:
+                    state.metadata = {}
+                state.metadata["tool_calls"] = tool_calls
 
-        except Exception as e:
-            logger.error(f"Error executing target ADK agent: {e}", exc_info=True)
-            recovery_msg = (
-                "Ensure the agent's run() method accepts user string input without unhandled exceptions. "
-                "Check tool invocations and exception handling inside the agent implementation."
-            )
-            state.output = ModelOutput.from_content(
-                model="adk_agent",
-                content=(
-                    f"Agent Execution Error: {str(e)}\n"
-                    f"Recovery Instruction: {recovery_msg}"
-                ),
-            )
-            if not state.metadata:
-                state.metadata = {}
-            state.metadata["error"] = str(e)
-            state.metadata["error_code"] = "AGENT_RUNTIME_EXCEPTION"
-            state.metadata["recovery_instruction"] = recovery_msg
+                duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+                tools_called_names = [tc.get("tool", "") if isinstance(tc, dict) else str(tc) for tc in tool_calls]
 
-        return state
+                span.set_attribute("status", "success")
+                span.set_attribute("duration_ms", duration_ms)
+                span.set_attribute("tools_called_count", len(tool_calls))
+
+                # 2. EXPLICIT OUTCOME LOGGING (SUCCESS)
+                logger.info(
+                    "Target ADK agent turn completed successfully",
+                    extra={
+                        "phase": "outcome",
+                        "status": "success",
+                        "sample_id": sample_id,
+                        "category": category,
+                        "tools_called": tools_called_names,
+                        "output_length": len(output_text),
+                        "duration_ms": duration_ms,
+                    },
+                )
+
+            except Exception as e:
+                duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+                span.set_attribute("status", "error")
+                span.set_attribute("error_code", "AGENT_RUNTIME_EXCEPTION")
+
+                logger.error(
+                    f"Error executing target ADK agent: {e}",
+                    exc_info=True,
+                    extra={
+                        "phase": "outcome",
+                        "status": "error",
+                        "error_code": "AGENT_RUNTIME_EXCEPTION",
+                        "sample_id": sample_id,
+                        "duration_ms": duration_ms,
+                    },
+                )
+                recovery_msg = (
+                    "Ensure the agent's run() method accepts user string input without unhandled exceptions. "
+                    "Check tool invocations and exception handling inside the agent implementation."
+                )
+                state.output = ModelOutput.from_content(
+                    model="adk_agent",
+                    content=(
+                        f"Agent Execution Error: {str(e)}\n"
+                        f"Recovery Instruction: {recovery_msg}"
+                    ),
+                )
+                if not state.metadata:
+                    state.metadata = {}
+                state.metadata["error"] = str(e)
+                state.metadata["error_code"] = "AGENT_RUNTIME_EXCEPTION"
+                state.metadata["recovery_instruction"] = recovery_msg
+
+            return state
 
     return solve
 

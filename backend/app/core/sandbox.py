@@ -11,6 +11,8 @@ from typing import Dict, Optional
 
 from app.config import settings
 
+from app.core.tracing import inject_trace_context
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,13 +47,18 @@ class SandboxManager:
                     shutil.rmtree(item, ignore_errors=True)
 
     def get_sandbox_env_vars(self) -> Dict[str, str]:
-        """Returns sanitized environment variables for worker subprocess."""
+        """Returns sanitized environment variables for worker subprocess with propagated trace context."""
         env = os.environ.copy()
         # Pass Vertex AI ADC variables
         env["GOOGLE_GENAI_USE_VERTEXAI"] = "true" if settings.google_genai_use_vertexai else "false"
         env["GOOGLE_CLOUD_PROJECT"] = settings.google_cloud_project
         env["GOOGLE_CLOUD_LOCATION"] = settings.google_cloud_location
         env["PYTHONPATH"] = f".:{env.get('PYTHONPATH', '')}"
+
+        # Inject OpenTelemetry distributed trace context
+        if settings.enable_opentelemetry:
+            inject_trace_context(env)
+
         return env
 
 

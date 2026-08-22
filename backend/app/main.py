@@ -9,13 +9,36 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.config import settings
+from app.core.logging_config import setup_logging
+from app.core.tracing import init_tracer_provider
 from app.routers import ingest, elicitation, dataset, evaluate, scorecard
+
+# Initialize Structured JSON Logging with PII Redaction
+setup_logging(
+    log_level=settings.log_level,
+    json_format=settings.log_json_format,
+    redact_pii_enabled=settings.redact_pii_in_logs,
+)
+
+# Initialize OpenTelemetry Distributed Tracing Provider
+if settings.enable_opentelemetry:
+    init_tracer_provider()
 
 app = FastAPI(
     title="EvalStudio AI API",
     description="Agentic evaluation workbench for GenAI and LLM applications",
     version="0.1.0",
 )
+
+# Instrument FastAPI for OpenTelemetry if enabled
+if settings.enable_opentelemetry:
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        FastAPIInstrumentor.instrument_app(app)
+    except Exception as otel_err:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not instrument FastAPI with OpenTelemetry: {otel_err}")
 
 # Enable CORS for local Vite development and external frontends
 app.add_middleware(

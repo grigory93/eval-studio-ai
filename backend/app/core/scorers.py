@@ -4,6 +4,7 @@ Implements ToolVerification, PolicyAdherence, and ModelGradedQA scorers
 with comprehensive parameter documentation, structured score metadata, and explicit failure recovery guidance.
 """
 
+import logging
 from typing import Any, Callable, Dict, List, Optional
 from inspect_ai.scorer import (
     Score,
@@ -14,6 +15,10 @@ from inspect_ai.scorer import (
     stderr,
 )
 from inspect_ai.solver import TaskState
+from app.core.tracing import get_tracer
+
+logger = logging.getLogger(__name__)
+tracer = get_tracer("app.core.scorers")
 
 
 @scorer(metrics=[accuracy(), mean(), stderr()])

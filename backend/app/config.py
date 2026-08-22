@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     max_eval_samples: int = 200
     docker_sandbox_enabled: bool = os.getenv("DOCKER_SANDBOX_ENABLED", "false").lower() == "true"
 
+    # Observability & Security settings
+    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    log_json_format: bool = os.getenv("LOG_JSON_FORMAT", "true").lower() == "true"
+    redact_pii_in_logs: bool = os.getenv("REDACT_PII_IN_LOGS", "true").lower() == "true"
+    enable_opentelemetry: bool = os.getenv("ENABLE_OPENTELEMETRY", "true").lower() == "true"
+
     def setup_directories(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.runs_dir.mkdir(parents=True, exist_ok=True)

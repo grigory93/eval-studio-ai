@@ -13,6 +13,7 @@ from app.utils.pdf_parser import (
     parse_pdf_content,
     parse_text_content,
 )
+from app.utils.sanitizer import redact_pii
 
 router = APIRouter(prefix="/api/ingest", tags=["Ingestion"])
 
@@ -33,10 +34,17 @@ class TextInputRequest(BaseModel):
         description="Raw text requirement, business rules, or user stories.",
         examples=["# Policy Rules\n1. Returns allowed within 30 days."],
     )
+    redact_pii: bool = Field(
+        default=True,
+        description="Whether to sanitize PII (emails, phone numbers, SSNs, tokens) from ingested text.",
+    )
 
 
 @router.post("/upload", response_model=RequirementDocModel)
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(
+    file: UploadFile = File(...),
+    redact_pii_content: bool = True,
+):
     """
     Accepts PDF, Markdown, or text requirement documents, parses sections, and produces structured document models.
 
@@ -96,6 +104,10 @@ async def upload_document(file: UploadFile = File(...)):
                 },
             )
 
+    if redact_pii_content:
+        full_text = redact_pii(full_text)
+        sections = {k: redact_pii(v) for k, v in sections.items()}
+
     doc_model = RequirementDocModel(
         doc_id=doc_id,
         filename=filename,
@@ -132,6 +144,10 @@ async def ingest_raw_text(payload: TextInputRequest):
 
     doc_id = f"doc-{uuid.uuid4().hex[:8]}"
     full_text, sections = parse_markdown_content(payload.text)
+
+    if payload.redact_pii:
+        full_text = redact_pii(full_text)
+        sections = {k: redact_pii(v) for k, v in sections.items()}
 
     doc_model = RequirementDocModel(
         doc_id=doc_id,

@@ -189,21 +189,33 @@ OUTPUT JSON FORMAT ONLY:
     async def _call_llm_json(self, prompt: str) -> Optional[dict]:
         if not self.client:
             return None
-        try:
-            from google.genai import types
 
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.3,
-                ),
-            )
-            if response.text:
-                return json.loads(response.text)
-        except Exception as e:
-            logger.warning(f"Synthesizer LLM generation error ({e}). Using template generator.")
+        from app.core.tracing import get_tracer
+        tracer = get_tracer("app.agents.synthesizer")
+
+        with tracer.start_as_current_span("synthesizer_gemini_generate") as span:
+            span.set_attribute("model", self.model_name)
+            span.set_attribute("prompt_length", len(prompt))
+            try:
+                from google.genai import types
+
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.3,
+                    ),
+                )
+                if response.text:
+                    span.set_attribute("response_length", len(response.text))
+                    return json.loads(response.text)
+            except Exception as e:
+                span.set_attribute("error", str(e))
+                logger.warning(
+                    f"Synthesizer LLM generation error ({e}). Using template generator.",
+                    extra={"error": str(e), "model": self.model_name, "agent": "DatasetSynthesizerAgent"},
+                )
         return None
 
     def _fallback_generate_samples(

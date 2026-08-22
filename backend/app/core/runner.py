@@ -22,7 +22,11 @@ from app.models.scorecard import (
 )
 from app.models.task import CompiledTaskResponse
 
+import time
+from app.core.tracing import get_tracer
+
 logger = logging.getLogger(__name__)
+tracer = get_tracer("app.core.runner")
 
 
 class EvalRunner:
@@ -54,28 +58,49 @@ class EvalRunner:
         Returns:
             ExecutiveScorecardReport: Complete diagnostic scorecard with aggregate metrics, failure clusters, and sample details.
         """
-        run_dir = sandbox_manager.create_run_environment(eval_id)
-        task_file = run_dir / "task.py"
-        log_file = run_dir / "eval_log.json"
+        start_time = time.perf_counter()
 
-        # Write task code to disk
-        task_file.write_text(compiled_task.task_code, encoding="utf-8")
+        # 1. EXPLICIT INTENT LOGGING (EVALUATION RUN START)
+        logger.info(
+            f"Starting evaluation run {eval_id} for task '{compiled_task.task_name}'",
+            extra={
+                "phase": "intent",
+                "event_type": "eval_started",
+                "eval_id": eval_id,
+                "task_name": compiled_task.task_name,
+                "total_samples": dataset.total_count,
+                "target_agent_path": compiled_task.config.target_agent_path,
+                "judge_model": compiled_task.config.model_graded_judge_model,
+            },
+        )
 
-        # Emit initial start event
-        if event_callback:
-            await self._emit(
-                event_callback,
-                {
-                    "event": "eval_started",
-                    "eval_id": eval_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "total_samples": dataset.total_count,
-                    "task_name": compiled_task.task_name,
-                },
-            )
+        with tracer.start_as_current_span("execute_evaluation_run") as span:
+            span.set_attribute("eval_id", eval_id)
+            span.set_attribute("task_name", compiled_task.task_name)
+            span.set_attribute("total_samples", dataset.total_count)
 
-        # Worker executor script
-        worker_script = f'''"""Worker runner executing inspect evaluation."""
+            run_dir = sandbox_manager.create_run_environment(eval_id)
+            task_file = run_dir / "task.py"
+            log_file = run_dir / "eval_log.json"
+
+            # Write task code to disk
+            task_file.write_text(compiled_task.task_code, encoding="utf-8")
+
+            # Emit initial start event
+            if event_callback:
+                await self._emit(
+                    event_callback,
+                    {
+                        "event": "eval_started",
+                        "eval_id": eval_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "total_samples": dataset.total_count,
+                        "task_name": compiled_task.task_name,
+                    },
+                )
+
+            # Worker executor script
+            worker_script = f'''"""Worker runner executing inspect evaluation."""
 import asyncio
 import json
 import os
@@ -106,85 +131,111 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 '''
-        worker_file = run_dir / "worker.py"
-        worker_file.write_text(worker_script, encoding="utf-8")
+            worker_file = run_dir / "worker.py"
+            worker_file.write_text(worker_script, encoding="utf-8")
 
-        # Execute subprocess
-        env = sandbox_manager.get_sandbox_env_vars()
-        env["PYTHONPATH"] = f"{run_dir.resolve()}:{Path.cwd().resolve()}:{env.get('PYTHONPATH', '')}"
+            # Execute subprocess
+            env = sandbox_manager.get_sandbox_env_vars()
+            env["PYTHONPATH"] = f"{run_dir.resolve()}:{Path.cwd().resolve()}:{env.get('PYTHONPATH', '')}"
 
-        cmd = [sys.executable, str(worker_file)]
+            cmd = [sys.executable, str(worker_file)]
 
-        logger.info(f"Launching evaluation worker subprocess for eval_id={eval_id}: {' '.join(cmd)}")
+            logger.info(
+                f"Launching evaluation worker subprocess for eval_id={eval_id}",
+                extra={"eval_id": eval_id, "command": ' '.join(cmd)},
+            )
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(run_dir),
-            env=env,
-        )
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(run_dir),
+                env=env,
+            )
 
-        self.active_processes[eval_id] = process
+            self.active_processes[eval_id] = process
 
-        # Read stdout/stderr asynchronously
-        completed_samples = 0
-        total_samples = max(1, dataset.total_count)
+            # Read stdout/stderr asynchronously
+            completed_samples = 0
+            total_samples = max(1, dataset.total_count)
 
-        async def read_stream(stream, is_err=False):
-            nonlocal completed_samples
-            while True:
-                line = await stream.readline()
-                if not line:
-                    break
-                decoded = line.decode("utf-8", errors="replace").strip()
-                if decoded:
-                    logger.info(f"[{eval_id}] {decoded}")
-                    if event_callback:
-                        completed_samples = min(total_samples, completed_samples + 1)
-                        progress_pct = int((completed_samples / total_samples) * 100)
-                        await self._emit(
-                            event_callback,
-                            {
-                                "event": "log_chunk",
-                                "eval_id": eval_id,
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "log_message": decoded,
-                                "progress_percent": progress_pct,
-                                "completed_samples": completed_samples,
-                                "total_samples": total_samples,
-                            },
-                        )
+            async def read_stream(stream, is_err=False):
+                nonlocal completed_samples
+                while True:
+                    line = await stream.readline()
+                    if not line:
+                        break
+                    decoded = line.decode("utf-8", errors="replace").strip()
+                    if decoded:
+                        logger.info(decoded, extra={"eval_id": eval_id, "is_stderr": is_err})
+                        if event_callback:
+                            completed_samples = min(total_samples, completed_samples + 1)
+                            progress_pct = int((completed_samples / total_samples) * 100)
+                            await self._emit(
+                                event_callback,
+                                {
+                                    "event": "log_chunk",
+                                    "eval_id": eval_id,
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "log_message": decoded,
+                                    "progress_percent": progress_pct,
+                                    "completed_samples": completed_samples,
+                                    "total_samples": total_samples,
+                                },
+                            )
 
-        await asyncio.gather(
-            read_stream(process.stdout),
-            read_stream(process.stderr, is_err=True),
-        )
+            await asyncio.gather(
+                read_stream(process.stdout),
+                read_stream(process.stderr, is_err=True),
+            )
 
-        await process.wait()
-        self.active_processes.pop(eval_id, None)
+            await process.wait()
+            self.active_processes.pop(eval_id, None)
 
-        # Parse results and build scorecard
-        scorecard = await self._generate_scorecard_from_run(
-            eval_id=eval_id,
-            compiled_task=compiled_task,
-            dataset=dataset,
-            run_dir=run_dir,
-        )
+            # Parse results and build scorecard
+            scorecard = await self._generate_scorecard_from_run(
+                eval_id=eval_id,
+                compiled_task=compiled_task,
+                dataset=dataset,
+                run_dir=run_dir,
+            )
 
-        # Emit completion event
-        if event_callback:
-            await self._emit(
-                event_callback,
-                {
-                    "event": "eval_complete",
+            duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+            span.set_attribute("overall_pass_rate", scorecard.metrics.overall_pass_rate)
+            span.set_attribute("passed_samples", scorecard.metrics.passed_samples)
+            span.set_attribute("failed_samples", scorecard.metrics.failed_samples)
+            span.set_attribute("duration_ms", duration_ms)
+
+            # 2. EXPLICIT OUTCOME LOGGING (EVALUATION RUN COMPLETE)
+            logger.info(
+                f"Completed evaluation run {eval_id} with pass rate {int(scorecard.metrics.overall_pass_rate * 100)}%",
+                extra={
+                    "phase": "outcome",
+                    "event_type": "eval_complete",
                     "eval_id": eval_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "scorecard": scorecard.model_dump(),
+                    "task_name": compiled_task.task_name,
+                    "overall_pass_rate": scorecard.metrics.overall_pass_rate,
+                    "passed_samples": scorecard.metrics.passed_samples,
+                    "failed_samples": scorecard.metrics.failed_samples,
+                    "errored_samples": scorecard.metrics.errored_samples,
+                    "duration_ms": duration_ms,
+                    "failure_clusters_count": len(scorecard.failure_clusters),
                 },
             )
 
-        return scorecard
+            # Emit completion event
+            if event_callback:
+                await self._emit(
+                    event_callback,
+                    {
+                        "event": "eval_complete",
+                        "eval_id": eval_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "scorecard": scorecard.model_dump(),
+                    },
+                )
+
+            return scorecard
 
     async def cancel_run(self, eval_id: str) -> bool:
         """Terminates an ongoing evaluation subprocess safely."""

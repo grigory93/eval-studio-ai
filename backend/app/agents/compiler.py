@@ -1,6 +1,7 @@
 """
 Inspect AI Task & Mermaid Diagram Compiler.
-Compiles synthesized datasets and target agent metadata into executable Python task code and Mermaid.js diagrams.
+Compiles synthesized datasets and target agent metadata into executable Python task code and Mermaid.js diagrams
+with comprehensive docstrings, strict model validation, and structured error resilience.
 """
 
 import uuid
@@ -27,6 +28,19 @@ class TaskCompiler:
         task_name: Optional[str] = None,
         fail_on_error: bool = False,
     ) -> CompiledTaskResponse:
+        """
+        Compiles an evaluation dataset and agent spec into runnable Inspect AI task code and a Mermaid architecture diagram.
+
+        Args:
+            dataset (EvalDatasetModel): Synthesized benchmark dataset containing categorized samples.
+            target_agent_path (str): Relative or absolute path to target agent and symbol
+                (e.g., 'examples/customer_support_adk/agent.py:root_agent'). Defaults to customer support agent.
+            task_name (Optional[str]): Custom task identifier; will be sanitized into a valid Python identifier.
+            fail_on_error (bool): Whether Inspect AI should abort on first sample error or continue (default False).
+
+        Returns:
+            CompiledTaskResponse: Contains generated Python task script, Mermaid sequence diagram, and task configuration.
+        """
         clean_task_name = (
             task_name or f"eval_{dataset.name.lower().replace(' ', '_').replace('-', '_')}"
         )
@@ -78,7 +92,16 @@ class TaskCompiler:
     def _generate_mermaid_diagram(
         self, dataset: EvalDatasetModel, target_agent_path: str
     ) -> MermaidDiagramModel:
-        """Generates dynamic business sequence diagram for the evaluation workflow."""
+        """
+        Generates dynamic business sequence diagram for the evaluation workflow.
+
+        Args:
+            dataset (EvalDatasetModel): The dataset under evaluation with sample metadata and tools.
+            target_agent_path (str): Target agent identifier.
+
+        Returns:
+            MermaidDiagramModel: Structured Mermaid diagram definition with node count and description.
+        """
         agent_label = target_agent_path.split(":")[-1] if ":" in target_agent_path else "Target Agent"
 
         # Collect unique tool names across dataset
@@ -121,3 +144,4 @@ class TaskCompiler:
             description="End-to-end evaluation flow connecting user personas, target agent, tools, and multi-scorers.",
             node_count=5,
         )
+

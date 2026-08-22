@@ -49,7 +49,20 @@ class ElicitationAgent:
     async def analyze_document(
         self, doc: RequirementDocModel
     ) -> Tuple[str, List[AmbiguityFinding], List[str], ConfirmedCriteriaModel]:
-        """Initial document analysis extracting rules and first round of Socratic probes."""
+        """
+        Performs initial Socratic document analysis, extracting domain rules, negative constraints,
+        expected tools, and edge-case ambiguity findings from an ingested policy or spec.
+
+        Args:
+            doc (RequirementDocModel): The parsed requirement document containing sections and raw text.
+
+        Returns:
+            Tuple[str, List[AmbiguityFinding], List[str], ConfirmedCriteriaModel]:
+                - reply (str): Natural language conversational probe summarizing findings and asking the first question.
+                - ambiguities (List[AmbiguityFinding]): Identified ambiguity findings requiring user clarification.
+                - suggested_options (List[str]): Suggested quick-reply options for the user.
+                - criteria (ConfirmedCriteriaModel): Draft evaluation criteria model extracted from the document.
+        """
         prompt = f"""
 You are an expert Socratic Agent Evaluator for GenAI applications.
 Analyze the following specification document and extract domain rules, safety constraints, and ambiguous edge cases.
@@ -126,7 +139,17 @@ OUTPUT FORMAT (JSON ONLY):
         current_criteria: ConfirmedCriteriaModel,
         doc_text: Optional[str] = None,
     ) -> ElicitationChatResponse:
-        """Processes conversational turns, refines criteria, and resolves ambiguities."""
+        """
+        Processes conversational clarification turns, updates confirmed criteria, and resolves ambiguities.
+
+        Args:
+            user_message (str): The user's reply to the probing question.
+            current_criteria (ConfirmedCriteriaModel): The working criteria model before this turn.
+            doc_text (Optional[str]): Original source document text for reference context.
+
+        Returns:
+            ElicitationChatResponse: Updated chat response with refined criteria, remaining gaps, and readiness status.
+        """
         prompt = f"""
 You are an expert Socratic Agent Evaluator. The user has provided an answer to a clarification question about evaluation criteria.
 

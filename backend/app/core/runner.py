@@ -41,7 +41,19 @@ class EvalRunner:
         dataset: EvalDatasetModel,
         event_callback: Optional[Callable[[Dict[str, Any]], Any]] = None,
     ) -> ExecutiveScorecardReport:
-        """Runs the compiled task in an isolated worker subprocess and returns the Executive Scorecard."""
+        """
+        Executes a compiled Inspect AI task in an isolated worker subprocess and streams real-time progress.
+
+        Args:
+            eval_id (str): Unique evaluation execution identifier.
+            compiled_task (CompiledTaskResponse): The compiled Inspect task containing Python task code and config.
+            dataset (EvalDatasetModel): Benchmark dataset with test samples across the 7 taxonomy dimensions.
+            event_callback (Optional[Callable[[Dict[str, Any]], Any]]): Asynchronous or synchronous callback
+                invoked on evaluation milestones and log streaming chunks.
+
+        Returns:
+            ExecutiveScorecardReport: Complete diagnostic scorecard with aggregate metrics, failure clusters, and sample details.
+        """
         run_dir = sandbox_manager.create_run_environment(eval_id)
         task_file = run_dir / "task.py"
         log_file = run_dir / "eval_log.json"
@@ -294,7 +306,11 @@ if __name__ == "__main__":
                         actual_output="",
                         score=0.0,
                         passed=False,
-                        judge_reasoning=f"Execution error: {str(e)}",
+                        judge_reasoning=(
+                            f"Execution error: {str(e)}. "
+                            "Recovery Instruction: Inspect target agent run() signature, ensure proper exception handling "
+                            "for unexpected inputs, and verify tool dependencies."
+                        ),
                         error_message=str(e),
                         tool_calls_made=[],
                         full_transcript=[],

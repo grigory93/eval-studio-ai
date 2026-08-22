@@ -55,7 +55,18 @@ class DatasetSynthesizerAgent:
         name: Optional[str] = None,
         categories: Optional[List[EvalCategory]] = None,
     ) -> EvalDatasetModel:
-        """Generates a complete dataset with samples distributed across all categories."""
+        """
+        Generates a complete evaluation dataset with test samples distributed across the 7 taxonomy categories.
+
+        Args:
+            criteria (ConfirmedCriteriaModel): Elicited domain business rules, safety policies, and edge cases.
+            sample_count (int): Target total number of evaluation samples to produce (default 50, range 10-200).
+            name (Optional[str]): Custom name for the generated dataset.
+            categories (Optional[List[EvalCategory]]): Subsets of the 7 taxonomy categories to generate samples for.
+
+        Returns:
+            EvalDatasetModel: Complete dataset with balanced sample distribution and metadata.
+        """
         target_categories = categories or EVAL_CATEGORIES
         dataset_name = name or f"Eval Suite - {criteria.use_case}"
 
@@ -98,7 +109,18 @@ class DatasetSynthesizerAgent:
         count: int,
         start_index: int,
     ) -> List[EvalSampleModel]:
-        """Generates samples for a specific category using LLM or template generator."""
+        """
+        Generates a batch of test samples for a specific evaluation category.
+
+        Args:
+            criteria (ConfirmedCriteriaModel): Domain rules and guidelines.
+            category (EvalCategory): Taxonomy category ('happy_path', 'edge_case', 'adversarial', etc.).
+            count (int): Number of samples to produce in this batch.
+            start_index (int): Numeric offset for sample ID numbering.
+
+        Returns:
+            List[EvalSampleModel]: Generated sample objects conforming to Inspect AI Sample schema.
+        """
         prompt = f"""
 You are an expert GenAI Benchmark Evaluator. Generate {count} realistic, challenging evaluation test samples for an agent.
 

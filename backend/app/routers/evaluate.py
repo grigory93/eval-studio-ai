@@ -31,31 +31,61 @@ _EVAL_STATUS: Dict[str, str] = {}
 
 
 class CompileTaskRequest(BaseModel):
-    dataset_id: str
-    target_agent_path: str = "examples/customer_support_adk/agent.py:root_agent"
-    task_name: Optional[str] = None
-    fail_on_error: bool = False
+    """Payload model for compiling a dataset into an Inspect AI task script."""
+    dataset_id: str = Field(..., description="Unique dataset identifier to compile.", examples=["ds-01"])
+    target_agent_path: str = Field(
+        default="examples/customer_support_adk/agent.py:root_agent",
+        description="Path and attribute identifier for the agent under test.",
+        examples=["examples/customer_support_adk/agent.py:root_agent"],
+    )
+    task_name: Optional[str] = Field(
+        default=None,
+        description="Optional custom name for the task function and test runner.",
+        examples=["eval_customer_support_v1"],
+    )
+    fail_on_error: bool = Field(
+        default=False,
+        description="Whether the Inspect test runner should stop on first sample exception.",
+    )
 
 
 class StartEvalRequest(BaseModel):
-    task_id: str
-    dataset_id: str
-    target_agent_path: str = "examples/customer_support_adk/agent.py:root_agent"
+    """Payload model for initiating an evaluation run."""
+    task_id: str = Field(..., description="Compiled task identifier from /api/eval/compile.", examples=["task-ab12cd34"])
+    dataset_id: str = Field(..., description="Referenced evaluation dataset ID.", examples=["ds-01"])
+    target_agent_path: str = Field(
+        default="examples/customer_support_adk/agent.py:root_agent",
+        description="Path to the target agent under test.",
+    )
 
 
 class StartEvalResponse(BaseModel):
-    eval_id: str
-    task_id: str
-    status: str
+    """Response returned upon successfully queuing an evaluation run."""
+    eval_id: str = Field(..., description="Unique evaluation execution run ID.")
+    task_id: str = Field(..., description="Referenced compiled task ID.")
+    status: str = Field(default="running", description="Initial execution state ('running').")
 
 
 @router.post("/compile", response_model=CompiledTaskResponse)
 async def compile_task_endpoint(payload: CompileTaskRequest):
-    """Compiles an approved dataset into an Inspect AI task and Mermaid diagram."""
+    """
+    Compiles a synthesized evaluation dataset into an executable Inspect AI task script and Mermaid diagram.
+
+    Args:
+        payload (CompileTaskRequest): Dataset ID, target agent path, and compilation parameters.
+
+    Returns:
+        CompiledTaskResponse: Runnable Python task script, Mermaid diagram model, and task configuration.
+    """
     dataset = get_dataset_by_id(payload.dataset_id)
     if not dataset:
         raise HTTPException(
-            status_code=404, detail=f"Dataset {payload.dataset_id} not found."
+            status_code=404,
+            detail={
+                "error_code": "DATASET_NOT_FOUND",
+                "message": f"Dataset '{payload.dataset_id}' not found.",
+                "recovery_instruction": "Create or synthesize a dataset via POST /api/dataset/synthesize before compiling.",
+            },
         )
 
     compiled = _compiler.compile(
@@ -71,10 +101,25 @@ async def compile_task_endpoint(payload: CompileTaskRequest):
 
 @router.post("/start", response_model=StartEvalResponse)
 async def start_evaluation_endpoint(payload: StartEvalRequest):
-    """Launches an evaluation run in an isolated worker subprocess."""
+    """
+    Launches an evaluation run in an isolated worker subprocess with multi-scorer verification.
+
+    Args:
+        payload (StartEvalRequest): Task ID, dataset ID, and target agent path.
+
+    Returns:
+        StartEvalResponse: Generated eval_id and status tracking information.
+    """
     dataset = get_dataset_by_id(payload.dataset_id)
     if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset not found.")
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error_code": "DATASET_NOT_FOUND",
+                "message": f"Dataset '{payload.dataset_id}' was not found.",
+                "recovery_instruction": "Synthesize a dataset first via POST /api/dataset/synthesize.",
+            },
+        )
 
     compiled = _COMPILED_TASKS.get(payload.task_id)
     if not compiled:
@@ -109,6 +154,7 @@ async def start_evaluation_endpoint(payload: StartEvalRequest):
                 "event": "eval_error",
                 "eval_id": eval_id,
                 "error": str(e),
+                "recovery_instruction": "Check worker logs, agent execution signatures, and dependency configuration.",
             })
 
     asyncio.create_task(run_in_background())
@@ -122,10 +168,25 @@ async def start_evaluation_endpoint(payload: StartEvalRequest):
 
 @router.get("/{eval_id}/stream")
 async def stream_evaluation(request: Request, eval_id: str):
-    """SSE streaming endpoint providing live logs and execution progress."""
+    """
+    Server-Sent Events (SSE) streaming endpoint delivering real-time logs and live evaluation progress.
+
+    Args:
+        eval_id (str): Evaluation run identifier.
+
+    Returns:
+        EventSourceResponse: SSE stream yielding progress and completion events.
+    """
     queue = _EVENT_QUEUES.get(eval_id)
     if not queue and eval_id not in _SCORECARDS:
-        raise HTTPException(status_code=404, detail="Evaluation stream not found.")
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error_code": "EVAL_STREAM_NOT_FOUND",
+                "message": f"Evaluation stream for '{eval_id}' was not found.",
+                "recovery_instruction": "Start an evaluation run via POST /api/eval/start before connecting to the stream.",
+            },
+        )
 
     async def event_generator():
         # If already completed, send immediate complete event
@@ -162,18 +223,37 @@ async def stream_evaluation(request: Request, eval_id: str):
 
 @router.post("/{eval_id}/cancel")
 async def cancel_evaluation(eval_id: str):
-    """Cancels a running evaluation subprocess."""
+    """
+    Safely terminates an ongoing evaluation worker subprocess.
+
+    Args:
+        eval_id (str): The running evaluation ID.
+
+    Returns:
+        Dict: Cancellation confirmation status.
+    """
     cancelled = await eval_runner.cancel_run(eval_id)
     _EVAL_STATUS[eval_id] = "cancelled"
-    return {"status": "cancelled" if cancelled else "not_running"}
+    return {"status": "cancelled" if cancelled else "not_running", "eval_id": eval_id}
 
 
 @router.get("/{eval_id}/status")
 async def get_eval_status(eval_id: str):
+    """
+    Queries current execution lifecycle state and scorecard availability for an evaluation.
+
+    Args:
+        eval_id (str): Unique evaluation ID.
+
+    Returns:
+        Dict: Status details ('running', 'completed', 'error', 'cancelled').
+    """
     status = _EVAL_STATUS.get(eval_id, "unknown")
     has_scorecard = eval_id in _SCORECARDS
     return {"eval_id": eval_id, "status": status, "has_scorecard": has_scorecard}
 
 
 def get_scorecard_by_id(eval_id: str) -> Optional[ExecutiveScorecardReport]:
+    """Helper to access in-memory scorecards by evaluation ID."""
     return _SCORECARDS.get(eval_id)
+

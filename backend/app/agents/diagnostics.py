@@ -58,7 +58,20 @@ class DiagnosticAgent:
         sample_results: List[SampleInspectionResult],
         baseline_eval_id: Optional[str] = None,
     ) -> ExecutiveScorecardReport:
-        """Conducts deep diagnostic root-cause clustering and produces executive scorecard."""
+        """
+        Conducts deep diagnostic root-cause clustering and produces an Executive Scorecard report.
+
+        Args:
+            eval_id (str): Unique evaluation run identifier.
+            suite_id (str): Associated benchmark dataset identifier.
+            task_name (str): The compiled Inspect task name.
+            metrics (MetricSummary): Aggregate KPIs, category pass rates, latencies, and token costs.
+            sample_results (List[SampleInspectionResult]): Individual test sample execution records and transcripts.
+            baseline_eval_id (Optional[str]): Prior evaluation run ID to compute regression deltas against.
+
+        Returns:
+            ExecutiveScorecardReport: Formatted scorecard containing summary, clusters, and actionable prompt fixes.
+        """
         failed_samples = [s for s in sample_results if not s.passed]
 
         comparative_delta = None

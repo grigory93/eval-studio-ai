@@ -1,6 +1,7 @@
 """
 Target ADK Agent Dynamic Loader and Inspect AI Bridge.
-Wraps local Google ADK agents into Inspect AI Solvers and intercepts tool calls.
+Wraps local Google ADK agents into Inspect AI Solvers and intercepts tool calls
+with strict schema validation, detailed parameter documentation, and actionable error recovery.
 """
 
 import importlib.util
@@ -8,27 +9,81 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from inspect_ai.model import ChatMessageUser, ModelOutput
 from inspect_ai.solver import Generate, TaskState, solver
+from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Pydantic Schemas for Agent Loader and Solver Contracts
+# ---------------------------------------------------------------------------
+
+class AgentSpecModel(BaseModel):
+    """Validation schema for target agent module and attribute specification."""
+    spec: str = Field(
+        ...,
+        description="Path and attribute specifier formatted as 'path/to/module.py:agent_variable'.",
+        pattern=r"^.+\.py:[a-zA-Z_][a-zA-Z0-9_]*$",
+        examples=["examples/customer_support_adk/agent.py:root_agent"],
+    )
+
+
+class AgentExecutionError(BaseModel):
+    """Structured error payload attached when target agent execution fails."""
+    status: str = Field(default="error", description="Failure status indicator.")
+    error_code: str = Field(..., description="Machine-readable error category.")
+    error_message: str = Field(..., description="Human-readable exception details.")
+    recovery_instruction: str = Field(
+        ...,
+        description="Actionable guidance instructing the LLM / evaluator on how to recover from failure.",
+    )
+    target_spec: str = Field(..., description="The target agent spec that failed execution.")
+
+
+# ---------------------------------------------------------------------------
+# Agent Dynamic Loader & Inspect Solver
+# ---------------------------------------------------------------------------
+
 def load_adk_agent(spec: str) -> Any:
     """
     Dynamically loads an agent instance from a filesystem path and attribute name.
-    Example spec: 'examples/customer_support_adk/agent.py:root_agent'
+
+    Args:
+        spec (str): Path and attribute name separated by a colon, e.g.
+            'examples/customer_support_adk/agent.py:root_agent'.
+
+    Returns:
+        Any: The instantiated agent object or function loaded from the target module.
+
+    Raises:
+        ValueError: If `spec` does not follow the 'file_path.py:attr_name' format.
+        FileNotFoundError: If the specified agent Python file does not exist on disk.
+        ImportError: If the Python module cannot be dynamically imported.
+        AttributeError: If the specified attribute variable is missing from the module.
+
+    Example:
+        >>> agent = load_adk_agent("examples/customer_support_adk/agent.py:root_agent")
+        >>> hasattr(agent, "run")
+        True
     """
     if ":" not in spec:
-        raise ValueError(f"Invalid agent spec '{spec}'. Must be in format 'path/to/file.py:agent_var'")
+        raise ValueError(
+            f"Invalid agent spec '{spec}'. Expected format 'path/to/file.py:agent_var' "
+            "(e.g. 'examples/customer_support_adk/agent.py:root_agent')."
+        )
 
     file_path_str, attr_name = spec.split(":", 1)
     file_path = Path(file_path_str).resolve()
 
     if not file_path.exists():
-        raise FileNotFoundError(f"Agent file not found at: {file_path}")
+        raise FileNotFoundError(
+            f"Agent source file not found at: {file_path}. "
+            "Please check the relative file path and ensure the agent file exists."
+        )
 
     # Add directory to sys.path to allow relative imports within the agent package
     agent_dir = str(file_path.parent.parent)
@@ -45,7 +100,10 @@ def load_adk_agent(spec: str) -> Any:
     spec_obj.loader.exec_module(module)
 
     if not hasattr(module, attr_name):
-        raise AttributeError(f"Module {module_name} does not contain '{attr_name}'")
+        raise AttributeError(
+            f"Module '{module_name}' at {file_path} does not define attribute '{attr_name}'. "
+            "Ensure the agent instance is defined and exported at module level."
+        )
 
     agent = getattr(module, attr_name)
     return agent
@@ -54,13 +112,33 @@ def load_adk_agent(spec: str) -> Any:
 @solver
 def adk_agent_solver(target_spec: str) -> Callable:
     """
-    Inspect AI solver wrapping an ADK agent.
-    Runs the agent and attaches tool calls to task state.
+    Inspect AI solver wrapping an ADK agent for multi-scorer evaluation.
+
+    Dynamically loads the target agent, intercepts its execution per sample,
+    and captures tool call traces and response outputs into the TaskState.
+
+    Args:
+        target_spec (str): File path and attribute for the agent under evaluation
+            (e.g., 'examples/customer_support_adk/agent.py:root_agent').
+
+    Returns:
+        Callable: An asynchronous solver function compatible with inspect_ai.Task.
+
+    Errors and Recovery:
+        If target agent loading or execution raises an exception:
+        - The solver records a non-crashing ModelOutput containing explicit error details
+          and actionable recovery instructions.
+        - Structured metadata is attached to `state.metadata` under 'error' and 'recovery_instruction'.
     """
-    agent = load_adk_agent(target_spec)
+    try:
+        agent = load_adk_agent(target_spec)
+    except Exception as load_err:
+        logger.error(f"Failed to pre-load agent for spec '{target_spec}': {load_err}")
+        agent = None
+        load_error_str = str(load_err)
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
-        # Extract user input prompt
+        # Extract user input prompt from state.input
         user_input = ""
         if isinstance(state.input, str):
             user_input = state.input
@@ -76,6 +154,30 @@ def adk_agent_solver(target_spec: str) -> Callable:
             user_input = str(state.input)
 
         user_input = user_input.strip()
+
+        if agent is None:
+            err_payload = AgentExecutionError(
+                error_code="AGENT_LOAD_FAILED",
+                error_message=f"Target agent could not be loaded: {load_error_str}",
+                recovery_instruction=(
+                    f"Check that '{target_spec}' points to a valid Python file with the exported symbol. "
+                    "Verify all dependencies are installed."
+                ),
+                target_spec=target_spec,
+            )
+            state.output = ModelOutput.from_content(
+                model="adk_agent",
+                content=(
+                    f"Agent Execution Error: {err_payload.error_message}\n"
+                    f"Recovery Instruction: {err_payload.recovery_instruction}"
+                ),
+            )
+            if not state.metadata:
+                state.metadata = {}
+            state.metadata["error"] = err_payload.error_message
+            state.metadata["error_code"] = err_payload.error_code
+            state.metadata["recovery_instruction"] = err_payload.recovery_instruction
+            return state
 
         try:
             # Execute target agent
@@ -108,13 +210,24 @@ def adk_agent_solver(target_spec: str) -> Callable:
 
         except Exception as e:
             logger.error(f"Error executing target ADK agent: {e}", exc_info=True)
+            recovery_msg = (
+                "Ensure the agent's run() method accepts user string input without unhandled exceptions. "
+                "Check tool invocations and exception handling inside the agent implementation."
+            )
             state.output = ModelOutput.from_content(
-                model="adk_agent", content=f"Agent Execution Error: {str(e)}"
+                model="adk_agent",
+                content=(
+                    f"Agent Execution Error: {str(e)}\n"
+                    f"Recovery Instruction: {recovery_msg}"
+                ),
             )
             if not state.metadata:
                 state.metadata = {}
             state.metadata["error"] = str(e)
+            state.metadata["error_code"] = "AGENT_RUNTIME_EXCEPTION"
+            state.metadata["recovery_instruction"] = recovery_msg
 
         return state
 
     return solve
+

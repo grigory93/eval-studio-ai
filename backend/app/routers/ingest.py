@@ -21,13 +21,34 @@ _DOCUMENT_STORE: Dict[str, RequirementDocModel] = {}
 
 
 class TextInputRequest(BaseModel):
-    title: str = Field(default="Plain Text Specification")
-    text: str = Field(..., description="Raw text requirement or policy specification")
+    """Payload model for direct raw text specification ingestion."""
+    title: str = Field(
+        default="Plain Text Specification",
+        description="User-provided title or agent identifier for the specification.",
+        examples=["Customer Support Return Policy"],
+    )
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="Raw text requirement, business rules, or user stories.",
+        examples=["# Policy Rules\n1. Returns allowed within 30 days."],
+    )
 
 
 @router.post("/upload", response_model=RequirementDocModel)
 async def upload_document(file: UploadFile = File(...)):
-    """Accepts PDF, Markdown, or text requirement documents and parses structure."""
+    """
+    Accepts PDF, Markdown, or text requirement documents, parses sections, and produces structured document models.
+
+    Args:
+        file (UploadFile): Binary document upload (supports .pdf, .md, .markdown, .txt).
+
+    Returns:
+        RequirementDocModel: Parsed document containing extracted sections and full text.
+
+    Raises:
+        HTTPException: 400 with recovery instructions if parsing or decoding fails.
+    """
     filename = file.filename or "uploaded_doc.txt"
     content_bytes = await file.read()
 
@@ -39,7 +60,12 @@ async def upload_document(file: UploadFile = File(...)):
             content_type = "application/pdf"
         except Exception as e:
             raise HTTPException(
-                status_code=400, detail=f"Failed to parse PDF document: {str(e)}"
+                status_code=400,
+                detail={
+                    "error_code": "PDF_PARSING_ERROR",
+                    "message": f"Failed to parse PDF document '{filename}': {str(e)}",
+                    "recovery_instruction": "Ensure the PDF contains selectable text (not scanned images) or paste text directly via POST /api/ingest/text.",
+                },
             )
     elif filename.lower().endswith(".md") or filename.lower().endswith(".markdown"):
         try:
@@ -48,7 +74,12 @@ async def upload_document(file: UploadFile = File(...)):
             content_type = "text/markdown"
         except Exception as e:
             raise HTTPException(
-                status_code=400, detail=f"Failed to decode markdown file: {str(e)}"
+                status_code=400,
+                detail={
+                    "error_code": "MARKDOWN_DECODING_ERROR",
+                    "message": f"Failed to decode markdown file: {str(e)}",
+                    "recovery_instruction": "Ensure the file is encoded in standard UTF-8 text.",
+                },
             )
     else:
         try:
@@ -57,7 +88,12 @@ async def upload_document(file: UploadFile = File(...)):
             content_type = "text/plain"
         except Exception as e:
             raise HTTPException(
-                status_code=400, detail=f"Failed to parse text document: {str(e)}"
+                status_code=400,
+                detail={
+                    "error_code": "TEXT_PARSING_ERROR",
+                    "message": f"Failed to parse text document: {str(e)}",
+                    "recovery_instruction": "Verify the file is a readable plain text document.",
+                },
             )
 
     doc_model = RequirementDocModel(
@@ -75,9 +111,24 @@ async def upload_document(file: UploadFile = File(...)):
 
 @router.post("/text", response_model=RequirementDocModel)
 async def ingest_raw_text(payload: TextInputRequest):
-    """Ingests direct user story or plain-text policy specification."""
+    """
+    Ingests direct user stories, Markdown rules, or plain-text policy specifications.
+
+    Args:
+        payload (TextInputRequest): Specification title and raw rule text.
+
+    Returns:
+        RequirementDocModel: Parsed document representation ready for Socratic elicitation.
+    """
     if not payload.text.strip():
-        raise HTTPException(status_code=400, detail="Requirement text cannot be empty.")
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": "EMPTY_SPECIFICATION_TEXT",
+                "message": "Requirement text cannot be empty.",
+                "recovery_instruction": "Provide non-empty business requirements or policy rules in payload.text.",
+            },
+        )
 
     doc_id = f"doc-{uuid.uuid4().hex[:8]}"
     full_text, sections = parse_markdown_content(payload.text)
@@ -97,11 +148,27 @@ async def ingest_raw_text(payload: TextInputRequest):
 
 @router.get("/documents/{doc_id}", response_model=RequirementDocModel)
 async def get_document(doc_id: str):
-    """Retrieves previously parsed requirement document."""
+    """
+    Retrieves a previously parsed requirement document by its unique ID.
+
+    Args:
+        doc_id (str): Unique document identifier.
+
+    Returns:
+        RequirementDocModel: Stored document model.
+    """
     if doc_id not in _DOCUMENT_STORE:
-        raise HTTPException(status_code=404, detail="Document not found.")
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error_code": "DOCUMENT_NOT_FOUND",
+                "message": f"Document '{doc_id}' not found.",
+                "recovery_instruction": "Upload or ingest a document first via POST /api/ingest/upload or POST /api/ingest/text.",
+            },
+        )
     return _DOCUMENT_STORE[doc_id]
 
 
 def get_document_by_id(doc_id: str) -> Optional[RequirementDocModel]:
+    """Helper to access stored documents by ID."""
     return _DOCUMENT_STORE.get(doc_id)

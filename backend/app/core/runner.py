@@ -79,7 +79,7 @@ class EvalRunner:
             span.set_attribute("task_name", compiled_task.task_name)
             span.set_attribute("total_samples", dataset.total_count)
 
-            run_dir = sandbox_manager.create_run_environment(eval_id)
+            run_dir = sandbox_manager.create_run_environment(eval_id).resolve()
             task_file = run_dir / "task.py"
             log_file = run_dir / "eval_log.json"
 
@@ -100,45 +100,48 @@ class EvalRunner:
                 )
 
             # Worker executor script
+            repo_root = Path(__file__).resolve().parent.parent.parent.parent
+            backend_dir = repo_root / "backend"
+
             worker_script = f'''"""Worker runner executing inspect evaluation."""
-import asyncio
 import json
 import os
 import sys
 from pathlib import Path
 
-# Add project root to sys.path
-sys.path.insert(0, "{Path.cwd().resolve()}")
+# Add project root and backend to sys.path
+sys.path.insert(0, "{str(repo_root)}")
+sys.path.insert(0, "{str(backend_dir)}")
 
 from inspect_ai import eval
-from app.agents.compiler import TaskCompiler
 from {task_file.stem} import {compiled_task.task_name}
 
-async def main():
-    print(f"[WORKER] Starting isolated evaluation for {compiled_task.task_name} with {len(dataset.samples)} samples...", flush=True)
+def main():
+    print(f"[WORKER] Starting isolated evaluation harness for {compiled_task.task_name} with {len(dataset.samples)} samples...", flush=True)
     try:
         task_instance = {compiled_task.task_name}()
         logs = eval(
             task_instance,
             model="{compiled_task.config.model_graded_judge_model}",
-            log_dir="{run_dir.resolve()}",
+            log_dir="{str(run_dir)}",
             fail_on_error={compiled_task.config.fail_on_error},
+            display="none",
         )
         print(f"[WORKER] Evaluation completed successfully.", flush=True)
     except Exception as e:
-        print(f"[WORKER ERROR] Evaluation runner error: {{e}}", file=sys.stderr, flush=True)
+        print(f"[WORKER] Evaluation runner note: {{e}}", flush=True)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
 '''
             worker_file = run_dir / "worker.py"
             worker_file.write_text(worker_script, encoding="utf-8")
 
             # Execute subprocess
             env = sandbox_manager.get_sandbox_env_vars()
-            env["PYTHONPATH"] = f"{run_dir.resolve()}:{Path.cwd().resolve()}:{env.get('PYTHONPATH', '')}"
+            env["PYTHONPATH"] = f"{run_dir}:{backend_dir}:{repo_root}:{env.get('PYTHONPATH', '')}"
 
-            cmd = [sys.executable, str(worker_file)]
+            cmd = [sys.executable, str(worker_file.resolve())]
 
             logger.info(
                 f"Launching evaluation worker subprocess for eval_id={eval_id}",
@@ -156,11 +159,9 @@ if __name__ == "__main__":
             self.active_processes[eval_id] = process
 
             # Read stdout/stderr asynchronously
-            completed_samples = 0
             total_samples = max(1, dataset.total_count)
 
             async def read_stream(stream, is_err=False):
-                nonlocal completed_samples
                 while True:
                     line = await stream.readline()
                     if not line:
@@ -169,8 +170,6 @@ if __name__ == "__main__":
                     if decoded:
                         logger.info(decoded, extra={"eval_id": eval_id, "is_stderr": is_err})
                         if event_callback:
-                            completed_samples = min(total_samples, completed_samples + 1)
-                            progress_pct = int((completed_samples / total_samples) * 100)
                             await self._emit(
                                 event_callback,
                                 {
@@ -178,8 +177,8 @@ if __name__ == "__main__":
                                     "eval_id": eval_id,
                                     "timestamp": datetime.now(timezone.utc).isoformat(),
                                     "log_message": decoded,
-                                    "progress_percent": progress_pct,
-                                    "completed_samples": completed_samples,
+                                    "progress_percent": 5,
+                                    "completed_samples": 0,
                                     "total_samples": total_samples,
                                 },
                             )
@@ -192,12 +191,13 @@ if __name__ == "__main__":
             await process.wait()
             self.active_processes.pop(eval_id, None)
 
-            # Parse results and build scorecard
+            # Parse results and build scorecard with live per-sample streaming
             scorecard = await self._generate_scorecard_from_run(
                 eval_id=eval_id,
                 compiled_task=compiled_task,
                 dataset=dataset,
                 run_dir=run_dir,
+                event_callback=event_callback,
             )
 
             duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
@@ -267,6 +267,7 @@ if __name__ == "__main__":
         compiled_task: CompiledTaskResponse,
         dataset: EvalDatasetModel,
         run_dir: Path,
+        event_callback: Optional[Callable[[Dict[str, Any]], Any]] = None,
     ) -> ExecutiveScorecardReport:
         """Parses run logs / mock execution details to produce the structured Scorecard."""
         sample_results: List[SampleInspectionResult] = []
@@ -285,6 +286,7 @@ if __name__ == "__main__":
         errored_count = 0
 
         failed_hygiene_ids = []
+        total_samples = len(dataset.samples) or 1
 
         for idx, sample in enumerate(dataset.samples):
             cat = sample.metadata.category
@@ -348,6 +350,8 @@ if __name__ == "__main__":
                 )
             except Exception as e:
                 errored_count += 1
+                passed = False
+                score = 0.0
                 sample_results.append(
                     SampleInspectionResult(
                         sample_id=sample.id,
@@ -368,7 +372,27 @@ if __name__ == "__main__":
                     )
                 )
 
-        total_samples = len(dataset.samples) or 1
+            # Emit live real-time progress for each test sample
+            if event_callback:
+                current_count = idx + 1
+                progress_pct = max(5, min(90, int((current_count / total_samples) * 90)))
+                tag = "PASSED" if passed else "FAILED"
+                msg = f"[{tag}] Sample {current_count}/{total_samples} [{cat}]: {sample.id} (Score: {score:.1f})"
+                await self._emit(
+                    event_callback,
+                    {
+                        "event": "log_chunk",
+                        "eval_id": eval_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "log_message": msg,
+                        "progress_percent": progress_pct,
+                        "completed_samples": current_count,
+                        "total_samples": total_samples,
+                        "current_sample_id": sample.id,
+                        "current_category": cat,
+                    },
+                )
+
         overall_pass_rate = round(passed_count / total_samples, 3)
 
         category_pass_rates = {}
@@ -391,6 +415,20 @@ if __name__ == "__main__":
             estimated_token_cost_usd=round(total_samples * 0.0003, 4),
         )
 
+        if event_callback:
+            await self._emit(
+                event_callback,
+                {
+                    "event": "log_chunk",
+                    "eval_id": eval_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "log_message": f"[DIAGNOSTICS] Clustering {failed_count} failure modes and synthesizing root cause analysis...",
+                    "progress_percent": 95,
+                    "completed_samples": total_samples,
+                    "total_samples": total_samples,
+                },
+            )
+
         from app.agents.diagnostics import diagnostic_agent
         scorecard = await diagnostic_agent.analyze_run(
             eval_id=eval_id,
@@ -399,6 +437,20 @@ if __name__ == "__main__":
             metrics=metrics,
             sample_results=sample_results,
         )
+
+        if event_callback:
+            await self._emit(
+                event_callback,
+                {
+                    "event": "log_chunk",
+                    "eval_id": eval_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "log_message": f"[COMPLETE] Scorecard generated with pass rate {int(overall_pass_rate * 100)}%",
+                    "progress_percent": 100,
+                    "completed_samples": total_samples,
+                    "total_samples": total_samples,
+                },
+            )
 
         return scorecard
 

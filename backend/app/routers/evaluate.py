@@ -177,8 +177,11 @@ async def stream_evaluation(request: Request, eval_id: str):
     Returns:
         EventSourceResponse: SSE stream yielding progress and completion events.
     """
+    from app.storage.suite_store import suite_store
     queue = _EVENT_QUEUES.get(eval_id)
-    if not queue and eval_id not in _SCORECARDS:
+    report = _SCORECARDS.get(eval_id) or suite_store.get_run_report(eval_id)
+
+    if not queue and not report and _EVAL_STATUS.get(eval_id) not in ["running", "error"]:
         raise HTTPException(
             status_code=404,
             detail={
@@ -190,14 +193,28 @@ async def stream_evaluation(request: Request, eval_id: str):
 
     async def event_generator():
         # If already completed, send immediate complete event
-        if eval_id in _SCORECARDS:
+        report = _SCORECARDS.get(eval_id) or suite_store.get_run_report(eval_id)
+        if report:
             yield {
                 "event": "eval_complete",
                 "data": json.dumps({
                     "eval_id": eval_id,
-                    "scorecard": _SCORECARDS[eval_id].model_dump(),
+                    "scorecard": report.model_dump(),
                 }),
             }
+            return
+
+        if _EVAL_STATUS.get(eval_id) == "error":
+            yield {
+                "event": "eval_error",
+                "data": json.dumps({
+                    "eval_id": eval_id,
+                    "error": "Evaluation execution failed or aborted.",
+                }),
+            }
+            return
+
+        if not queue:
             return
 
         while True:
@@ -215,6 +232,17 @@ async def stream_evaluation(request: Request, eval_id: str):
                 if event_type in ["eval_complete", "eval_error"]:
                     break
             except asyncio.TimeoutError:
+                # Check if report completed asynchronously in storage
+                rep = _SCORECARDS.get(eval_id) or suite_store.get_run_report(eval_id)
+                if rep:
+                    yield {
+                        "event": "eval_complete",
+                        "data": json.dumps({
+                            "eval_id": eval_id,
+                            "scorecard": rep.model_dump(),
+                        }),
+                    }
+                    break
                 # Keep-alive ping
                 yield {"event": "ping", "data": ""}
 
@@ -248,12 +276,19 @@ async def get_eval_status(eval_id: str):
     Returns:
         Dict: Status details ('running', 'completed', 'error', 'cancelled').
     """
-    status = _EVAL_STATUS.get(eval_id, "unknown")
-    has_scorecard = eval_id in _SCORECARDS
+    from app.storage.suite_store import suite_store
+    report = _SCORECARDS.get(eval_id) or suite_store.get_run_report(eval_id)
+    has_scorecard = report is not None
+    status = _EVAL_STATUS.get(eval_id)
+    if has_scorecard and status != "error":
+        status = "completed"
+    elif not status:
+        status = "completed" if has_scorecard else "unknown"
     return {"eval_id": eval_id, "status": status, "has_scorecard": has_scorecard}
 
 
 def get_scorecard_by_id(eval_id: str) -> Optional[ExecutiveScorecardReport]:
-    """Helper to access in-memory scorecards by evaluation ID."""
-    return _SCORECARDS.get(eval_id)
+    """Helper to access in-memory or persisted scorecards by evaluation ID."""
+    from app.storage.suite_store import suite_store
+    return _SCORECARDS.get(eval_id) or suite_store.get_run_report(eval_id)
 

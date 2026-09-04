@@ -8,6 +8,9 @@ from pathlib import Path
 from pydantic_settings import BaseSettings
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
 class Settings(BaseSettings):
     app_name: str = "EvalStudio AI"
     app_version: str = "0.1.0"
@@ -18,10 +21,10 @@ class Settings(BaseSettings):
     port: int = 8000
     cors_origins: list[str] = ["*"]
 
-    # Storage paths
-    data_dir: Path = Path(os.getenv("EVALSTUDIO_DATA_DIR", "./data"))
-    runs_dir: Path = Path(os.getenv("EVALSTUDIO_RUNS_DIR", "./data/runs"))
-    suites_dir: Path = Path(os.getenv("EVALSTUDIO_SUITES_DIR", "./data/suites"))
+    # Storage paths (resolved absolute paths outside backend/ to avoid uvicorn watcher reloads)
+    data_dir: Path = Path(os.getenv("EVALSTUDIO_DATA_DIR", str(REPO_ROOT / "data"))).resolve()
+    runs_dir: Path = Path(os.getenv("EVALSTUDIO_RUNS_DIR", str(REPO_ROOT / "data" / "runs"))).resolve()
+    suites_dir: Path = Path(os.getenv("EVALSTUDIO_SUITES_DIR", str(REPO_ROOT / "data" / "suites"))).resolve()
 
     # Google Cloud & Vertex AI ADC configuration
     # Note: Vertex AI uses Application Default Credentials (ADC).

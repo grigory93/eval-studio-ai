@@ -27,62 +27,138 @@ export function useEvalStream(evalId: string | null) {
   });
 
   const eventSourceRef = useRef<EventSource | null>(null);
+  const isFinishedRef = useRef(false);
 
   useEffect(() => {
     if (!evalId) return;
+    isFinishedRef.current = false;
 
     const url = `/api/eval/${evalId}/stream`;
     const es = new EventSource(url);
     eventSourceRef.current = es;
 
-    es.addEventListener('eval_started', (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
-      setState((prev) => ({
-        ...prev,
-        totalSamples: data.total_samples || 0,
-        logs: [...prev.logs, `[START] Evaluation started for ${data.task_name} (${data.total_samples} samples)`],
-      }));
-    });
-
-    es.addEventListener('log_chunk', (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
-      setState((prev) => ({
-        ...prev,
-        logs: [...prev.logs, data.log_message],
-        progressPercent: data.progress_percent || prev.progressPercent,
-        completedSamples: data.completed_samples || prev.completedSamples,
-        totalSamples: data.total_samples || prev.totalSamples,
-      }));
-    });
-
-    es.addEventListener('eval_complete', (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+    const finishWithScorecard = (scorecard: ExecutiveScorecardReport) => {
+      if (isFinishedRef.current) return;
+      isFinishedRef.current = true;
       setState((prev) => ({
         ...prev,
         progressPercent: 100,
+        completedSamples: prev.totalSamples || prev.completedSamples,
         isCompleted: true,
-        scorecard: data.scorecard,
-        logs: [...prev.logs, '[COMPLETE] Evaluation run completed successfully.'],
+        scorecard,
+        logs: prev.logs.some((l) => l.includes('[COMPLETE]'))
+          ? prev.logs
+          : [...prev.logs, '[COMPLETE] Evaluation run completed successfully.'],
       }));
-      es.close();
-    });
-
-    es.addEventListener('eval_error', (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
-      setState((prev) => ({
-        ...prev,
-        error: data.error || 'Evaluation error occurred',
-        logs: [...prev.logs, `[ERROR] ${data.error}`],
-      }));
-      es.close();
-    });
-
-    es.onerror = () => {
-      // Stream closed or error
       es.close();
     };
 
+    es.addEventListener('eval_started', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        setState((prev) => ({
+          ...prev,
+          totalSamples: data.total_samples || prev.totalSamples,
+          progressPercent: Math.max(prev.progressPercent, 5),
+          logs: [...prev.logs, `[START] Evaluation started for ${data.task_name} (${data.total_samples} samples)`],
+        }));
+      } catch (err) {
+        console.warn('Failed to parse eval_started event:', err);
+      }
+    });
+
+    es.addEventListener('log_chunk', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        setState((prev) => ({
+          ...prev,
+          logs: [...prev.logs, data.log_message],
+          progressPercent:
+            typeof data.progress_percent === 'number'
+              ? data.progress_percent
+              : prev.progressPercent,
+          completedSamples:
+            typeof data.completed_samples === 'number'
+              ? data.completed_samples
+              : prev.completedSamples,
+          totalSamples:
+            typeof data.total_samples === 'number' && data.total_samples > 0
+              ? data.total_samples
+              : prev.totalSamples,
+          currentSampleId: data.current_sample_id || prev.currentSampleId,
+          currentCategory: data.current_category || prev.currentCategory,
+        }));
+      } catch (err) {
+        console.warn('Failed to parse log_chunk event:', err);
+      }
+    });
+
+    es.addEventListener('eval_complete', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.scorecard) {
+          finishWithScorecard(data.scorecard);
+        }
+      } catch (err) {
+        console.warn('Failed to parse eval_complete event:', err);
+      }
+    });
+
+    es.addEventListener('eval_error', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        isFinishedRef.current = true;
+        setState((prev) => ({
+          ...prev,
+          error: data.error || 'Evaluation error occurred',
+          logs: [...prev.logs, `[ERROR] ${data.error}`],
+        }));
+        es.close();
+      } catch (err) {
+        console.warn('Failed to parse eval_error event:', err);
+      }
+    });
+
+    es.onerror = () => {
+      // Do not abruptly terminate on SSE blips; let polling safety net check status
+    };
+
+    // Resilient Polling Safety Net: Checks status in case SSE connection closes or stalls
+    const pollInterval = setInterval(async () => {
+      if (isFinishedRef.current) {
+        clearInterval(pollInterval);
+        return;
+      }
+
+      try {
+        const statusRes = await fetch(`/api/eval/${evalId}/status`);
+        if (!statusRes.ok) return;
+        const statusData = await statusRes.json();
+
+        if (statusData.has_scorecard) {
+          const scorecardRes = await fetch(`/api/scorecard/${evalId}`);
+          if (scorecardRes.ok) {
+            const scorecard = await scorecardRes.json();
+            finishWithScorecard(scorecard);
+            clearInterval(pollInterval);
+          }
+        } else if (statusData.status === 'error') {
+          isFinishedRef.current = true;
+          setState((prev) => ({
+            ...prev,
+            error: 'Evaluation execution encountered an error.',
+            logs: [...prev.logs, '[ERROR] Subprocess evaluation failed.'],
+          }));
+          es.close();
+          clearInterval(pollInterval);
+        }
+      } catch (pollErr) {
+        // Silently continue polling
+      }
+    }, 1500);
+
     return () => {
+      clearInterval(pollInterval);
       es.close();
     };
   }, [evalId]);

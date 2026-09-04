@@ -34,7 +34,10 @@ export const LiveProgress: React.FC<LiveProgressProps> = ({
 
   useEffect(() => {
     if (isCompleted && scorecard) {
-      onEvaluationCompleted(scorecard);
+      const timer = setTimeout(() => {
+        onEvaluationCompleted(scorecard);
+      }, 1500);
+      return () => clearTimeout(timer);
     }
   }, [isCompleted, scorecard, onEvaluationCompleted]);
 

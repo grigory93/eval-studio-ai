@@ -26,13 +26,13 @@ class SandboxManager:
 
     def create_run_environment(self, eval_id: str) -> Path:
         """Creates a dedicated filesystem workspace for an evaluation run."""
-        run_path = self.runs_dir / eval_id
+        run_path = (self.runs_dir / eval_id).resolve()
         run_path.mkdir(parents=True, exist_ok=True)
         return run_path
 
     def cleanup_run_environment(self, eval_id: str, keep_logs: bool = True) -> None:
         """Cleans up temporary artifacts while preserving logs."""
-        run_path = self.runs_dir / eval_id
+        run_path = (self.runs_dir / eval_id).resolve()
         if not run_path.exists():
             return
 
@@ -53,6 +53,7 @@ class SandboxManager:
         env["GOOGLE_GENAI_USE_VERTEXAI"] = "true" if settings.google_genai_use_vertexai else "false"
         env["GOOGLE_CLOUD_PROJECT"] = settings.google_cloud_project
         env["GOOGLE_CLOUD_LOCATION"] = settings.google_cloud_location
+        env["GOOGLE_USE_ADC"] = "true"
         env["PYTHONPATH"] = f".:{env.get('PYTHONPATH', '')}"
 
         # Inject OpenTelemetry distributed trace context

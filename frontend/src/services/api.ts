@@ -47,6 +47,32 @@ export async function ingestRawText(title: string, text: string): Promise<Requir
   return res.json();
 }
 
+export interface InitiateElicitationResponse {
+  criteria: ConfirmedCriteriaModel;
+  ambiguities: any[];
+  reply: string;
+  suggested_options: string[];
+}
+
+export async function initiateElicitation(
+  docId: string,
+  targetAgentPath: string = 'examples/customer_support_adk/agent.py:root_agent'
+): Promise<InitiateElicitationResponse> {
+  const res = await fetch(`${BASE_URL}/elicitation/initiate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      doc_id: docId,
+      target_agent_path: targetAgentPath,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to initiate elicitation' }));
+    throw new Error(err.detail || 'Failed to initiate elicitation');
+  }
+  return res.json();
+}
+
 export async function sendElicitationMessage(
   sessionId: string,
   message: string,

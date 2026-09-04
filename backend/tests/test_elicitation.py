@@ -126,8 +126,38 @@ def test_resolve_finding_different_rule_types():
     assert len(updated.domain_rules) == 0
 
     # Resolve to safety_policies
-    updated2, _ = agent.resolve_finding(updated, "gap-sp", "Strictly terminate and alert on injection", "safety_policies")
+    updated2, _ = agent.resolve_finding(
+        updated, "gap-sp", "Strictly terminate and alert on injection", rule_type="safety_policies", create_rule=True
+    )
     assert "Strictly terminate and alert on injection" in updated2.safety_policies
+
+
+def test_resolve_finding_with_create_rule_false():
+    from app.models.elicitation import AmbiguityFinding
+    agent = ElicitationAgent()
+    crit = ConfirmedCriteriaModel(
+        criteria_id="crit-no-rule",
+        use_case="Test Case",
+        domain_rules=["Existing Rule"],
+        ambiguities=[
+            AmbiguityFinding(
+                id="gap-01",
+                category="Edge Case",
+                description="Special packaging",
+                suggested_question="How to handle special packaging?",
+                status="unresolved",
+            ),
+        ],
+    )
+
+    updated, finding = agent.resolve_finding(
+        crit, "gap-01", "Handled by warehouse, no agent rule needed", create_rule=False
+    )
+    assert finding.status == "resolved"
+    assert finding.resolution == "Handled by warehouse, no agent rule needed"
+    # Ensure no new rule was inserted into domain_rules
+    assert updated.domain_rules == ["Existing Rule"]
+    assert "Handled by warehouse, no agent rule needed" not in updated.domain_rules
 
 
 @pytest.mark.asyncio
@@ -215,6 +245,44 @@ async def test_chat_clarify_preserves_ambiguities():
     assert updated_ambs[2].status == "unresolved"
 
 
+@pytest.mark.asyncio
+async def test_chat_clarify_question_does_not_resolve_gaps_or_pollute_rules():
+    from app.models.elicitation import AmbiguityFinding
+    agent = ElicitationAgent()
+    criteria = ConfirmedCriteriaModel(
+        criteria_id="crit-question-test",
+        use_case="Customer support agent",
+        domain_rules=["Rule 1: Unopened items eligible for return."],
+        edge_cases=["Edge case 1"],
+        ambiguities=[
+            AmbiguityFinding(
+                id="gap-open",
+                category="Edge Case",
+                description="Opened items condition",
+                suggested_question="Are opened items accepted?",
+                status="unresolved",
+                suggested_options=["Permit returns with photo", "Refuse opened items"],
+            ),
+        ],
+    )
+
+    # User asks a general question rather than resolving the gap
+    response = await agent.chat_clarify(
+        user_message="What tools does this agent support?",
+        current_criteria=criteria,
+    )
+
+    # Ambiguity must remain unresolved
+    assert len(response.updated_criteria.ambiguities) == 1
+    assert response.updated_criteria.ambiguities[0].status == "unresolved"
+    assert response.updated_criteria.ambiguities[0].resolution is None
+
+    # Edge cases and domain rules must NOT be polluted with the raw question text
+    assert not any("What tools" in ec for ec in response.updated_criteria.edge_cases)
+    assert not any("Rule: What tools" in ec for ec in response.updated_criteria.edge_cases)
+    assert response.updated_criteria.domain_rules == ["Rule 1: Unopened items eligible for return."]
+
+
 # ---------------------------------------------------------------------------
 # Router Integration Tests
 # ---------------------------------------------------------------------------
@@ -252,7 +320,7 @@ def test_elicitation_router_lifecycle():
 
     finding_id = criteria["ambiguities"][0]["id"]
 
-    # 3. Resolve an ambiguity via router
+    # 3. Resolve an ambiguity via router with create_rule=True
     resolve_res = client.post(
         f"/api/elicitation/criteria/{criteria_id}/ambiguities/resolve",
         json={
@@ -268,6 +336,27 @@ def test_elicitation_router_lifecycle():
     assert target_finding["status"] == "resolved"
     assert target_finding["resolution"] == "Permit returns within 14 days with receipt"
     assert any("14 days" in r for r in resolved_crit["domain_rules"])
+
+    # 3b. Resolve second ambiguity with create_rule=False
+    if len(criteria["ambiguities"]) > 1:
+        finding_id_2 = criteria["ambiguities"][1]["id"]
+        rules_before = list(resolved_crit["domain_rules"])
+        resolve_no_rule_res = client.post(
+            f"/api/elicitation/criteria/{criteria_id}/ambiguities/resolve",
+            json={
+                "finding_id": finding_id_2,
+                "resolution": "Warehouse handles this offline",
+                "create_rule": False,
+                "rule_type": "domain_rules",
+            },
+        )
+        assert resolve_no_rule_res.status_code == 200
+        res_crit_2 = resolve_no_rule_res.json()
+        f2 = next(a for a in res_crit_2["ambiguities"] if a["id"] == finding_id_2)
+        assert f2["status"] == "resolved"
+        assert f2["resolution"] == "Warehouse handles this offline"
+        # Domain rules must NOT have grown
+        assert res_crit_2["domain_rules"] == rules_before
 
     # 4. Patch criteria (CRUD)
     patch_res = client.patch(

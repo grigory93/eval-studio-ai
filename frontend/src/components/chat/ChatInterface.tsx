@@ -19,6 +19,7 @@ import {
   Compass,
 } from 'lucide-react';
 import {
+  initiateElicitation,
   sendElicitationMessage,
   confirmCriteria,
   updateCriteria,
@@ -83,16 +84,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const initiateChat = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/elicitation/initiate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          doc_id: doc.doc_id,
-          target_agent_path: targetAgentPath,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to initiate elicitation');
-      const data = await res.json();
+      const data = await initiateElicitation(doc.doc_id, targetAgentPath);
 
       setCriteria(data.criteria);
       setMessages([
@@ -239,14 +231,15 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         options: response.suggested_options,
       };
       setMessages((prev) => [...prev, botReply]);
-    } catch {
+    } catch (err: any) {
+      console.error('Error sending elicitation message:', err);
       setMessages((prev) => [
         ...prev,
         {
           id: `msg-err-${Date.now()}`,
           sender: 'bot',
-          text: 'I updated the criteria with your input. You can also directly add or edit rules in the workbench on the right.',
-          options: ['Proceed to dataset synthesis'],
+          text: '⚠️ Unable to process your message due to a connection or server error. Your last input was not saved. Please try sending your message again or editing criteria directly.',
+          options: ['Retry last message'],
         },
       ]);
     } finally {

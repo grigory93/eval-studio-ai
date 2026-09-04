@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  initiateElicitation,
   updateCriteria,
   resolveAmbiguity,
   dismissAmbiguity,
@@ -158,5 +159,40 @@ describe('Elicitation and Ingest API Client Services', () => {
     await expect(updateCriteria('nonexistent', { domain_rules: [] })).rejects.toThrow(
       'Failed to update criteria'
     );
+  });
+
+  it('initiateElicitation posts doc_id and target_agent_path', async () => {
+    const mockInitiate = {
+      criteria: {
+        criteria_id: 'crit-test',
+        use_case: 'Test Case',
+        domain_rules: [],
+        edge_cases: [],
+        safety_policies: [],
+        expected_tools: [],
+        ambiguities: [],
+        evaluation_rubrics: {},
+        is_confirmed: false,
+      },
+      ambiguities: [],
+      reply: 'Ready to clarify',
+      suggested_options: ['Option 1'],
+    };
+
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockInitiate,
+    } as Response);
+
+    const result = await initiateElicitation('doc-123', 'examples/customer_support_adk/agent.py:root_agent');
+    expect(global.fetch).toHaveBeenCalledWith('/api/elicitation/initiate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        doc_id: 'doc-123',
+        target_agent_path: 'examples/customer_support_adk/agent.py:root_agent',
+      }),
+    });
+    expect(result).toEqual(mockInitiate);
   });
 });

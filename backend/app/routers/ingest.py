@@ -215,10 +215,10 @@ async def get_sample_agents():
 @router.post("/inspect-agent", response_model=InspectAgentResponse)
 async def inspect_agent_endpoint(payload: InspectAgentRequest):
     """Validates target agent spec and extracts declared tools."""
-    from app.core.bridge import inspect_agent_tools, load_adk_agent
+    from app.core.bridge import load_adk_agent, extract_agent_tools
     try:
-        load_adk_agent(payload.spec)
-        tools = inspect_agent_tools(payload.spec)
+        agent = load_adk_agent(payload.spec)
+        tools = extract_agent_tools(agent)
         return InspectAgentResponse(spec=payload.spec, valid=True, tools=tools)
     except Exception as e:
         return InspectAgentResponse(spec=payload.spec, valid=False, tools=[], error=str(e))

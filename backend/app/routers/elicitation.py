@@ -120,6 +120,7 @@ async def resolve_ambiguity(criteria_id: str, payload: ResolveAmbiguityRequest):
         criteria=current,
         finding_id=payload.finding_id,
         resolution=payload.resolution,
+        create_rule=payload.create_rule,
         rule_type=payload.rule_type,
     )
     if not finding:

@@ -162,10 +162,15 @@ OUTPUT FORMAT (JSON ONLY):
         finding_id: str,
         resolution: str,
         rule_type: str = "domain_rules",
+        create_rule: bool = True,
     ) -> Tuple[ConfirmedCriteriaModel, Optional[AmbiguityFinding]]:
         """
-        Resolves a specific ambiguity finding and converts it directly into a confirmed rule in the criteria.
+        Resolves a specific ambiguity finding and converts it directly into a confirmed rule in the criteria if create_rule is True.
         """
+        if isinstance(rule_type, bool):
+            create_rule = rule_type
+            rule_type = "domain_rules"
+
         updated_ambiguities = []
         resolved_finding = None
 
@@ -188,15 +193,16 @@ OUTPUT FORMAT (JSON ONLY):
         updated_edges = list(criteria.edge_cases)
         updated_safety = list(criteria.safety_policies)
 
-        if rule_type == "safety_policies":
-            if rule_text not in updated_safety:
-                updated_safety.append(rule_text)
-        elif rule_type == "edge_cases":
-            if rule_text not in updated_edges:
-                updated_edges.append(rule_text)
-        else:
-            if rule_text not in updated_rules:
-                updated_rules.append(rule_text)
+        if create_rule and rule_text:
+            if rule_type == "safety_policies":
+                if rule_text not in updated_safety:
+                    updated_safety.append(rule_text)
+            elif rule_type == "edge_cases":
+                if rule_text not in updated_edges:
+                    updated_edges.append(rule_text)
+            else:
+                if rule_text not in updated_rules:
+                    updated_rules.append(rule_text)
 
         updated_criteria = criteria.model_copy(
             update={
@@ -268,36 +274,26 @@ OUTPUT FORMAT (JSON ONLY):
 
         resolved_gap_id = response_json.get("resolved_gap_id")
 
-        # Update ambiguities status
+        # Update ambiguities status - only when explicitly resolved by LLM or option match
         updated_ambiguities = []
         for amb in current_criteria.ambiguities:
             if isinstance(amb, dict):
                 amb = AmbiguityFinding(**amb)
             if amb.status == "unresolved":
-                # Check if this gap was resolved
-                if resolved_gap_id == amb.id or (
-                    user_message.lower() in [o.lower() for o in amb.suggested_options]
-                ) or (resolved_gap_id is None and len([a for a in current_criteria.ambiguities if a.status == "unresolved"]) > 0 and amb == [a for a in current_criteria.ambiguities if a.status == "unresolved"][0]):
+                is_matched = (resolved_gap_id == amb.id) or any(
+                    user_message.strip().lower() == opt.strip().lower()
+                    for opt in amb.suggested_options
+                )
+                if is_matched:
                     amb = amb.model_copy(
                         update={
                             "status": "resolved",
                             "resolved": True,
-                            "resolution": user_message,
+                            "resolution": user_message.strip(),
                         }
                     )
                     resolved_gap_id = amb.id
             updated_ambiguities.append(amb)
-
-        # Incorporate user response into edge cases or domain rules if not already present
-        clean_user_rule = user_message.strip().strip('"').strip("'")
-        if (
-            clean_user_rule
-            and len(clean_user_rule) > 5
-            and clean_user_rule not in updated_rules
-            and clean_user_rule not in updated_edge
-            and not clean_user_rule.lower().startswith("proceed")
-        ):
-            updated_edge.append(f"Rule: {clean_user_rule}")
 
         unresolved_count = len([a for a in updated_ambiguities if a.status == "unresolved"])
         user_wants_proceed = any(
@@ -480,8 +476,36 @@ OUTPUT FORMAT (JSON ONLY):
         self, user_message: str, current_criteria: ConfirmedCriteriaModel
     ) -> dict:
         """Deterministic heuristic for continuing elicitation chat in tests."""
+        msg_lower = user_message.strip().lower()
+        is_question = msg_lower.endswith("?") or any(
+            msg_lower.startswith(q)
+            for q in ["what", "how", "can you", "could you", "why", "where", "is there", "tell me"]
+        )
+
         unresolved = [a for a in current_criteria.ambiguities if a.status == "unresolved"]
-        resolved_id = unresolved[0].id if unresolved else None
+
+        # If user asks a general question or greeting, do not resolve any gaps or mutate rules
+        if is_question:
+            return {
+                "reply": f"Regarding your question: I am analyzing '{current_criteria.use_case}'. We currently have {len(current_criteria.domain_rules)} domain rules and {len(unresolved)} open edge cases to clarify.",
+                "resolved_gap_id": None,
+                "is_ready_for_synthesis": False,
+                "updated_domain_rules": current_criteria.domain_rules,
+                "updated_edge_cases": current_criteria.edge_cases,
+                "updated_safety_policies": current_criteria.safety_policies,
+                "updated_expected_tools": current_criteria.expected_tools,
+                "suggested_options": unresolved[0].suggested_options if unresolved else ["Proceed with dataset synthesis"],
+            }
+
+        # Match against unresolved ambiguities
+        resolved_id = None
+        if unresolved:
+            for a in unresolved:
+                if any(opt.lower() in msg_lower or msg_lower in opt.lower() for opt in a.suggested_options):
+                    resolved_id = a.id
+                    break
+            if not resolved_id and not any(w in msg_lower for w in ["hello", "hi", "help", "thanks"]):
+                resolved_id = unresolved[0].id
 
         clean_rule = user_message.strip()
         updated_rules = list(current_criteria.domain_rules)

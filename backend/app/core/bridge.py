@@ -4,10 +4,12 @@ Wraps local Google ADK agents into Inspect AI Solvers and intercepts tool calls
 with strict schema validation, detailed parameter documentation, and actionable error recovery.
 """
 
+import hashlib
 import importlib.util
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -79,14 +81,25 @@ def load_adk_agent(spec: str) -> Any:
     file_path_str, attr_name = spec.split(":", 1)
     file_path = Path(file_path_str)
     repo_root = Path(__file__).resolve().parent.parent.parent.parent
-    if not file_path.exists():
-        alt_path = repo_root / file_path_str
-        if alt_path.exists():
-            file_path = alt_path.resolve()
-        else:
-            file_path = file_path.resolve()
+
+    # Resolve relative to repo root if not absolute
+    if not file_path.is_absolute():
+        file_path = (repo_root / file_path_str).resolve()
     else:
         file_path = file_path.resolve()
+
+    # Security: Ensure agent module resides strictly within the repo root workspace
+    if not file_path.is_relative_to(repo_root):
+        raise PermissionError(
+            f"Access denied: Target agent '{spec}' must reside within the workspace directory ({repo_root})."
+        )
+
+    # Security: Disallow loading from system, environment, or hidden runtime directories
+    disallowed_dirs = {".venv", "venv", ".git", "__pycache__", ".gemini"}
+    if any(part in disallowed_dirs for part in file_path.parts):
+        raise PermissionError(
+            f"Access denied: Cannot load agent modules from protected directory ({file_path})."
+        )
 
     if not file_path.exists():
         raise FileNotFoundError(
@@ -95,11 +108,16 @@ def load_adk_agent(spec: str) -> Any:
         )
 
     # Add directory to sys.path to allow imports within the agent package and repo root
-    for p in [str(repo_root), str(file_path.parent), str(file_path.parent.parent)]:
-        if p not in sys.path:
-            sys.path.insert(0, p)
+    for p in [file_path.parent, file_path.parent.parent, repo_root]:
+        resolved_p = p.resolve()
+        if resolved_p.is_relative_to(repo_root):
+            p_str = str(resolved_p)
+            if p_str not in sys.path:
+                sys.path.insert(0, p_str)
 
-    module_name = f"adk_target_{file_path.stem}"
+    # Prevent sys.modules collision for agents sharing the same filename (e.g. agent.py)
+    path_hash = hashlib.sha256(str(file_path).encode("utf-8")).hexdigest()[:8]
+    module_name = f"adk_target_{file_path.stem}_{path_hash}"
     spec_obj = importlib.util.spec_from_file_location(module_name, str(file_path))
     if not spec_obj or not spec_obj.loader:
         raise ImportError(f"Could not create module spec for {file_path}")
@@ -118,24 +136,30 @@ def load_adk_agent(spec: str) -> Any:
     return agent
 
 
+def extract_agent_tools(agent: Any) -> List[str]:
+    """
+    Extracts tool names from an already loaded ADK agent instance.
+    """
+    if hasattr(agent, "tools"):
+        if isinstance(agent.tools, dict):
+            return list(agent.tools.keys())
+        elif isinstance(agent.tools, list):
+            return [getattr(t, "name", str(t)) for t in agent.tools]
+    return []
+
+
 def inspect_agent_tools(spec: str) -> List[str]:
     """
-    Inspects and extracts available tool names from a target ADK agent.
+    Inspects and extracts available tool names from a target ADK agent spec.
     """
     try:
         agent = load_adk_agent(spec)
-        if hasattr(agent, "tools"):
-            if isinstance(agent.tools, dict):
-                return list(agent.tools.keys())
-            elif isinstance(agent.tools, list):
-                return [getattr(t, "name", str(t)) for t in agent.tools]
-        return []
+        return extract_agent_tools(agent)
     except Exception as e:
         logger.warning(f"Could not inspect tools for spec '{spec}': {e}")
         return []
 
 
-import time
 from app.core.tracing import get_tracer
 
 tracer = get_tracer("app.core.bridge")

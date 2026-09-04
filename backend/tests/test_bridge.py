@@ -19,10 +19,38 @@ def test_load_adk_agent_valid_and_invalid():
         load_adk_agent("invalid_spec_without_colon")
 
     with pytest.raises(FileNotFoundError):
-        load_adk_agent("non_existent_dir/agent.py:root_agent")
+        load_adk_agent("examples/non_existent_dir/agent.py:root_agent")
 
 
-def test_inspect_agent_tools():
+def test_agent_path_security_traversal_protection():
+    # Outside repository workspace
+    with pytest.raises(PermissionError):
+        load_adk_agent("/etc/passwd:root_agent")
+
+    with pytest.raises(PermissionError):
+        load_adk_agent("../../../secret.py:root_agent")
+
+    # Protected environment directory
+    with pytest.raises(PermissionError):
+        load_adk_agent(".venv/some_script.py:root_agent")
+
+
+def test_module_cache_isolation_for_identical_filenames():
+    import sys
+    agent_cs = load_adk_agent("examples/customer_support_adk/agent.py:root_agent")
+    agent_hr = load_adk_agent("examples/hr_benefits_adk/agent.py:root_agent")
+
+    assert agent_cs is not None
+    assert agent_hr is not None
+    assert agent_cs != agent_hr
+
+    # Check sys.modules for distinct hashed keys
+    adk_modules = [k for k in sys.modules if k.startswith("adk_target_agent_")]
+    assert len(adk_modules) >= 2
+
+
+def test_inspect_and_extract_agent_tools():
+    from app.core.bridge import extract_agent_tools
     # Customer support agent tools
     cs_tools = inspect_agent_tools("examples/customer_support_adk/agent.py:root_agent")
     assert "lookup_order" in cs_tools
@@ -34,9 +62,13 @@ def test_inspect_agent_tools():
     assert "lookup_employee_pto" in hr_tools
     assert "submit_leave_request" in hr_tools
 
+    # Direct extract_agent_tools
+    agent_hr = load_adk_agent("examples/hr_benefits_adk/agent.py:root_agent")
+    assert extract_agent_tools(agent_hr) == hr_tools
+
     # Invalid and missing specs return empty list without crashing
     assert inspect_agent_tools("invalid_spec_without_colon") == []
-    assert inspect_agent_tools("non_existent_dir/agent.py:root_agent") == []
+    assert inspect_agent_tools("examples/non_existent_dir/agent.py:root_agent") == []
 
 
 @pytest.mark.asyncio

@@ -121,6 +121,11 @@ class DatasetSynthesizerAgent:
         Returns:
             List[EvalSampleModel]: Generated sample objects conforming to Inspect AI Sample schema.
         """
+        category_seeds = [
+            s for s in getattr(criteria, "test_seeds", [])
+            if getattr(s, "category", None) == category and getattr(s, "status", None) == "accepted"
+        ]
+
         prompt = f"""
 You are an expert GenAI Benchmark Evaluator. Generate {count} realistic, challenging evaluation test samples for an agent.
 
@@ -130,6 +135,8 @@ AGENT DESCRIPTION: {criteria.target_agent_description}
 BUSINESS RULES: {json.dumps(criteria.domain_rules)}
 SAFETY POLICIES: {json.dumps(criteria.safety_policies)}
 AVAILABLE TOOLS: {json.dumps(criteria.expected_tools)}
+DISTILLED SEEDS / EXEMPLARS FOR THIS CATEGORY:
+{json.dumps([s.model_dump() if hasattr(s, "model_dump") else s for s in category_seeds])}
 
 Category Guidelines:
 - happy_path: Standard canonical user queries with clear expected resolution.
@@ -389,15 +396,43 @@ OUTPUT JSON FORMAT ONLY:
 
         category_templates = templates.get(category, templates["happy_path"])
 
-        for i in range(count):
-            tmpl = category_templates[i % len(category_templates)]
-            sample_id = f"sample-{start_index + i:03d}"
+        # Prioritize accepted seeds for this category
+        category_seeds = [
+            s for s in getattr(criteria, "test_seeds", [])
+            if getattr(s, "category", None) == category and getattr(s, "status", None) == "accepted"
+        ]
+
+        for s in category_seeds:
+            if len(samples) >= count:
+                break
+            sample_id = f"sample-{start_index + len(samples):03d}"
+            meta = EvalSampleMetadata(
+                category=category,
+                grading_rubric=s.grading_rubric,
+                expected_tools=s.expected_tools,
+                difficulty=s.difficulty,
+                policy_rule_id=s.source_clause_id or f"RULE-{category.upper()[:3]}-SEED",
+            )
+            samples.append(
+                EvalSampleModel(
+                    id=sample_id,
+                    input=s.sample_input,
+                    target=s.expected_target,
+                    metadata=meta,
+                )
+            )
+
+        # Fill remaining quota with templates
+        remaining = count - len(samples)
+        for i in range(remaining):
+            tmpl = category_templates[(len(samples)) % len(category_templates)]
+            sample_id = f"sample-{start_index + len(samples):03d}"
             meta = EvalSampleMetadata(
                 category=category,
                 grading_rubric=tmpl.get("rubric", f"Verify adherence to {category} rules."),
                 expected_tools=tmpl.get("tools", []),
                 difficulty=tmpl.get("difficulty", "medium"),
-                policy_rule_id=f"RULE-{category.upper()[:3]}-{i+1:02d}",
+                policy_rule_id=f"RULE-{category.upper()[:3]}-{len(samples)+1:02d}",
             )
             samples.append(
                 EvalSampleModel(

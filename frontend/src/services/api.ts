@@ -6,6 +6,8 @@ import {
   RequirementDocModel,
   ElicitationChatResponse,
   ConfirmedCriteriaModel,
+  EvaluationSeed,
+  EvalCategory,
   EvalDatasetModel,
   EvalSampleModel,
   CompiledTaskResponse,
@@ -48,10 +50,12 @@ export async function ingestRawText(title: string, text: string): Promise<Requir
 }
 
 export interface InitiateElicitationResponse {
+  session_id?: string;
   criteria: ConfirmedCriteriaModel;
   ambiguities: any[];
   reply: string;
   suggested_options: string[];
+  proposed_seeds?: EvaluationSeed[];
 }
 
 export async function initiateElicitation(
@@ -77,7 +81,8 @@ export async function sendElicitationMessage(
   sessionId: string,
   message: string,
   docId?: string,
-  existingCriteria?: ConfirmedCriteriaModel
+  existingCriteria?: ConfirmedCriteriaModel,
+  mode: 'walkthrough' | 'chat' | 'gaps' = 'chat'
 ): Promise<ElicitationChatResponse> {
   const res = await fetch(`${BASE_URL}/elicitation/chat`, {
     method: 'POST',
@@ -87,12 +92,69 @@ export async function sendElicitationMessage(
       message,
       doc_id: docId,
       existing_criteria: existingCriteria,
+      mode,
     }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Chat request failed' }));
     throw new Error(err.detail || 'Chat request failed');
   }
+  return res.json();
+}
+
+export async function acceptSeed(
+  criteriaId: string,
+  seedId: string,
+  modifiedSeed?: EvaluationSeed
+): Promise<ConfirmedCriteriaModel> {
+  const res = await fetch(`${BASE_URL}/elicitation/criteria/${criteriaId}/seeds/${seedId}/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      seed_id: seedId,
+      modified_seed: modifiedSeed,
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to accept proposed seed');
+  return res.json();
+}
+
+export async function dismissSeed(
+  criteriaId: string,
+  seedId: string
+): Promise<ConfirmedCriteriaModel> {
+  const res = await fetch(`${BASE_URL}/elicitation/criteria/${criteriaId}/seeds/${seedId}/dismiss`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error('Failed to dismiss seed');
+  return res.json();
+}
+
+export async function addCustomSeed(
+  criteriaId: string,
+  seed: EvaluationSeed
+): Promise<ConfirmedCriteriaModel> {
+  const res = await fetch(`${BASE_URL}/elicitation/criteria/${criteriaId}/seeds`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seed }),
+  });
+  if (!res.ok) throw new Error('Failed to add custom seed');
+  return res.json();
+}
+
+export async function deepDiveCategory(
+  criteriaId: string,
+  category: EvalCategory,
+  focusArea?: string
+): Promise<{ criteria_id: string; category: EvalCategory; seeds: EvaluationSeed[]; updated_criteria: ConfirmedCriteriaModel }> {
+  const res = await fetch(`${BASE_URL}/elicitation/criteria/${criteriaId}/deep-dive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category, focus_area: focusArea }),
+  });
+  if (!res.ok) throw new Error('Failed to conduct category deep dive');
   return res.json();
 }
 

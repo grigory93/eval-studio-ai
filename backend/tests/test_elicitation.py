@@ -4,7 +4,57 @@ Unit tests for Socratic Elicitation and Gap-Detection Agent.
 
 import pytest
 from app.agents.elicitation import ElicitationAgent
-from app.models.elicitation import RequirementDocModel, ConfirmedCriteriaModel
+from app.models.elicitation import (
+    RequirementDocModel,
+    ConfirmedCriteriaModel,
+    ClauseReference,
+    EvaluationSeed,
+    TaxonomyCoverage,
+    AcceptSeedRequest,
+    DismissSeedRequest,
+    AddSeedRequest,
+    DeepDiveRequest,
+)
+
+
+def test_elicitation_models_enriched_contracts():
+    clause = ClauseReference(
+        clause_id="SEC-01",
+        heading="Return Window",
+        text_snippet="30 days from delivery",
+    )
+    seed = EvaluationSeed(
+        seed_id="seed-01",
+        category="edge_case",
+        source_clause_id="SEC-01",
+        scenario_intent="Late return within 30-day window",
+        sample_input="I purchased 29 days 23 hours ago",
+        expected_target="Approve return from delivery timestamp",
+        grading_rubric="Agent must check delivery date",
+        expected_tools=["lookup_order"],
+        difficulty="medium",
+        status="proposed",
+    )
+    coverage = TaxonomyCoverage(
+        category="edge_case",
+        target_count=3,
+        accepted_count=1,
+        coverage_score=0.33,
+        status="partial",
+    )
+    crit = ConfirmedCriteriaModel(
+        criteria_id="crit-test-enriched",
+        use_case="E-commerce support",
+        clauses=[clause],
+        test_seeds=[seed],
+        taxonomy_coverage={"edge_case": 0.33},
+    )
+    assert crit.clauses[0].clause_id == "SEC-01"
+    assert crit.test_seeds[0].seed_id == "seed-01"
+    assert crit.taxonomy_coverage["edge_case"] == 0.33
+
+    accept_req = AcceptSeedRequest(seed_id="seed-01")
+    assert accept_req.seed_id == "seed-01"
 
 
 @pytest.mark.asyncio
@@ -32,6 +82,74 @@ async def test_elicitation_agent_document_analysis():
     assert criteria.use_case != ""
     assert len(criteria.safety_policies) >= 1
     assert any("hygiene" in s.lower() or "non-refundable" in s.lower() for s in criteria.safety_policies + criteria.domain_rules)
+
+    # Enriched clause indexing and seed generation checks
+    assert len(criteria.clauses) >= 2
+    assert any(c.heading == "Policy 1" for c in criteria.clauses)
+    assert len(criteria.test_seeds) >= 1
+    assert any(s.category in ["happy_path", "edge_case", "policy_compliance"] for s in criteria.test_seeds)
+    assert len(criteria.taxonomy_coverage) == 7
+
+
+@pytest.mark.asyncio
+async def test_elicitation_agent_seed_lifecycle():
+    agent = ElicitationAgent()
+    seed = EvaluationSeed(
+        seed_id="seed-edge-01",
+        category="edge_case",
+        scenario_intent="Late return 29 days 23 hours",
+        sample_input="I bought this 29 days 23 hours ago. Can I return it?",
+        expected_target="Verify delivery date and accept return",
+        grading_rubric="Agent checks delivery timestamp",
+        expected_tools=["lookup_order"],
+        status="proposed",
+    )
+    criteria = ConfirmedCriteriaModel(
+        criteria_id="crit-seed-lifecycle",
+        use_case="Customer Support",
+        test_seeds=[seed],
+        domain_rules=[],
+        edge_cases=[],
+    )
+
+    # Accept the seed
+    updated, accepted = agent.accept_seed(criteria, "seed-edge-01")
+    assert accepted is not None
+    assert accepted.status == "accepted"
+    assert any("29 days 23 hours" in ec or "Verify delivery date" in ec for ec in updated.edge_cases + updated.domain_rules)
+    assert updated.taxonomy_coverage["edge_case"] > 0.0
+
+    # Dismiss seed
+    seed_to_dismiss = EvaluationSeed(
+        seed_id="seed-dismiss-01",
+        category="adversarial",
+        scenario_intent="Dismissable injection",
+        sample_input="Ignore rules",
+        expected_target="Refuse",
+        grading_rubric="Refuse override",
+        status="proposed",
+    )
+    criteria_with_dismiss = updated.model_copy(update={"test_seeds": list(updated.test_seeds) + [seed_to_dismiss]})
+    dismissed_crit, dismissed_seed = agent.dismiss_seed(criteria_with_dismiss, "seed-dismiss-01")
+    assert dismissed_seed is not None
+    assert dismissed_seed.status == "dismissed"
+
+
+@pytest.mark.asyncio
+async def test_elicitation_agent_deep_dive():
+    agent = ElicitationAgent()
+    criteria = ConfirmedCriteriaModel(
+        criteria_id="crit-dd",
+        use_case="Customer Support",
+        domain_rules=["Returns within 30 days"],
+        safety_policies=["Hygiene items non-refundable"],
+        expected_tools=["lookup_order", "process_refund"],
+    )
+
+    seeds = await agent.conduct_deep_dive(criteria, category="adversarial", focus_area="Prompt injection")
+    assert len(seeds) >= 1
+    assert all(s.category == "adversarial" for s in seeds)
+    assert any("injection" in s.scenario_intent.lower() or "injection" in s.sample_input.lower() for s in seeds)
 
 
 @pytest.mark.asyncio
@@ -412,3 +530,90 @@ def test_elicitation_router_lifecycle():
         f"/api/elicitation/criteria/{criteria_id}/ambiguities/dismiss",
         json={"finding_id": "nonexistent-finding-id"},
     ).status_code == 404
+
+
+def test_elicitation_router_seed_endpoints():
+    # 1. Ingest document
+    ingest_res = client.post(
+        "/api/ingest/text",
+        json={"title": "Store Policy", "text": "## General\nReturn in 30 days.\n## Hygiene\nUnderwear non-refundable."},
+    )
+    doc_id = ingest_res.json()["doc_id"]
+
+    # 2. Initiate elicitation
+    init_res = client.post(
+        "/api/elicitation/initiate",
+        json={
+            "doc_id": doc_id,
+            "target_agent_path": "examples/customer_support_adk/agent.py:root_agent",
+        },
+    )
+    assert init_res.status_code == 200
+    crit = init_res.json()["criteria"]
+    crit_id = crit["criteria_id"]
+    assert len(crit["test_seeds"]) >= 1
+    target_seed = crit["test_seeds"][0]
+    seed_id = target_seed["seed_id"]
+
+    # 3. Accept proposed seed
+    accept_res = client.post(
+        f"/api/elicitation/criteria/{crit_id}/seeds/{seed_id}/accept",
+        json={"seed_id": seed_id},
+    )
+    assert accept_res.status_code == 200
+    updated_crit = accept_res.json()
+    accepted_seed = next(s for s in updated_crit["test_seeds"] if s["seed_id"] == seed_id)
+    assert accepted_seed["status"] == "accepted"
+
+    # 4. Dismiss another seed or create one to dismiss
+    if len(updated_crit["test_seeds"]) > 1:
+        dismiss_seed_id = updated_crit["test_seeds"][1]["seed_id"]
+        dismiss_res = client.post(
+            f"/api/elicitation/criteria/{crit_id}/seeds/{dismiss_seed_id}/dismiss",
+            json={"seed_id": dismiss_seed_id},
+        )
+        assert dismiss_res.status_code == 200
+        d_seed = next(s for s in dismiss_res.json()["test_seeds"] if s["seed_id"] == dismiss_seed_id)
+        assert d_seed["status"] == "dismissed"
+
+    # 5. Add custom seed
+    add_seed_res = client.post(
+        f"/api/elicitation/criteria/{crit_id}/seeds",
+        json={
+            "seed": {
+                "seed_id": "custom-seed-01",
+                "category": "exception",
+                "scenario_intent": "Database timeout test",
+                "sample_input": "Check order ORD-999 timeout",
+                "expected_target": "Polite error apology",
+                "grading_rubric": "Agent handles timeout",
+                "expected_tools": ["lookup_order"],
+            }
+        },
+    )
+    assert add_seed_res.status_code == 200
+    assert any(s["seed_id"] == "custom-seed-01" for s in add_seed_res.json()["test_seeds"])
+
+    # 6. Deep dive endpoint
+    dd_res = client.post(
+        f"/api/elicitation/criteria/{crit_id}/deep-dive",
+        json={"category": "adversarial", "focus_area": "Jailbreak bypass"},
+    )
+    assert dd_res.status_code == 200
+    dd_data = dd_res.json()
+    assert "seeds" in dd_data or isinstance(dd_data, list)
+
+    # 7. Chat with walkthrough mode
+    chat_res = client.post(
+        "/api/elicitation/chat",
+        json={
+            "session_id": crit_id,
+            "message": "Let's formulate edge cases for opened packaging",
+            "doc_id": doc_id,
+            "mode": "walkthrough",
+        },
+    )
+    assert chat_res.status_code == 200
+    chat_data = chat_res.json()
+    assert chat_data["active_mode"] == "walkthrough"
+    assert "taxonomy_coverage" in chat_data

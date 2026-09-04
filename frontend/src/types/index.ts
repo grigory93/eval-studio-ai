@@ -61,6 +61,33 @@ export interface AmbiguityFinding {
   suggested_options?: string[];
 }
 
+export interface ClauseReference {
+  clause_id: string;
+  heading: string;
+  text_snippet: string;
+}
+
+export interface EvaluationSeed {
+  seed_id: string;
+  category: EvalCategory;
+  source_clause_id?: string;
+  scenario_intent: string;
+  sample_input: string | Array<Record<string, any>>;
+  expected_target: string;
+  grading_rubric: string;
+  expected_tools?: string[];
+  difficulty?: 'easy' | 'medium' | 'hard';
+  status?: 'proposed' | 'accepted' | 'dismissed';
+}
+
+export interface TaxonomyCoverage {
+  category: EvalCategory;
+  target_count: number;
+  accepted_count: number;
+  coverage_score: number;
+  status: 'gap' | 'partial' | 'complete';
+}
+
 export interface ConfirmedCriteriaModel {
   criteria_id: string;
   use_case: string;
@@ -70,9 +97,30 @@ export interface ConfirmedCriteriaModel {
   edge_cases: string[];
   safety_policies: string[];
   expected_tools: string[];
+  clauses?: ClauseReference[];
   ambiguities?: AmbiguityFinding[];
+  test_seeds?: EvaluationSeed[];
+  taxonomy_coverage?: Record<string, number>;
   evaluation_rubrics: Record<string, string>;
   is_confirmed: boolean;
+}
+
+export interface AcceptSeedRequest {
+  seed_id: string;
+  modified_seed?: EvaluationSeed;
+}
+
+export interface DismissSeedRequest {
+  seed_id: string;
+}
+
+export interface AddSeedRequest {
+  seed: EvaluationSeed;
+}
+
+export interface DeepDiveRequest {
+  category: EvalCategory;
+  focus_area?: string;
 }
 
 export interface SampleAgentInfo {
@@ -90,6 +138,7 @@ export interface ElicitationMessage {
   timestamp: string;
   clarification_options?: string[];
   ambiguities_detected?: AmbiguityFinding[];
+  proposed_seeds?: EvaluationSeed[];
 }
 
 export interface ElicitationChatResponse {
@@ -98,7 +147,10 @@ export interface ElicitationChatResponse {
   ambiguities: AmbiguityFinding[];
   suggested_options: string[];
   updated_criteria: ConfirmedCriteriaModel;
+  proposed_seeds?: EvaluationSeed[];
+  taxonomy_coverage?: Record<string, number>;
   is_ready_for_synthesis: boolean;
+  active_mode?: 'walkthrough' | 'chat' | 'gaps';
 }
 
 export interface ScorerConfig {

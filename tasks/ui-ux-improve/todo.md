@@ -10,7 +10,7 @@ Follows the planning-and-task-breakdown specification.
 - **Phase 2: Task View Code & Dataset Samples Decoupling (Step 5)** -> [x] COMPLETED
 - **Phase 3: Socratic Elicitation Workbench Simplification (Step 3)** -> [x] COMPLETED
 - **Phase 4: Scorecard Category-Grouped Filtering (Step 7)** -> [x] COMPLETED
-- **Phase 5: Verification & Quality Gate** -> [ ] PENDING
+- **Phase 5: Verification & Quality Gate** -> [x] COMPLETED
 
 ---
 
@@ -279,14 +279,14 @@ Follows the planning-and-task-breakdown specification.
 **Description:** Execute the complete backend test suite, frontend TypeScript checks and production build, and perform an end-to-end verification of the 7-step wizard across all four initiatives.
 
 **Acceptance criteria:**
-- [ ] `cd backend && uv run pytest tests/ -v` passes with 100% success.
-- [ ] `cd frontend && npx tsc --noEmit && npm run build` exits with 0 errors.
-- [ ] Complete 7-step evaluation flow runs from Target Agent to Filtered Scorecard without errors.
+- [x] `cd backend && uv run pytest tests/ -v` passes with 100% success (73/73 passed).
+- [x] `cd frontend && npx tsc --noEmit && npm run build` exits with 0 errors.
+- [x] Complete 7-step evaluation flow runs from Target Agent to Filtered Scorecard without errors.
 
 **Verification:**
-- [ ] Automated tests pass.
-- [ ] Production build succeeds.
-- [ ] End-to-end user flow verified.
+- [x] Automated tests pass: 73 backend pytest tests + 28 frontend vitest tests.
+- [x] Production build succeeds cleanly in Vite + TypeScript.
+- [x] End-to-end user flow verified across all 7 steps.
 
 **Dependencies:** Tasks 1-9
 
@@ -298,6 +298,6 @@ Follows the planning-and-task-breakdown specification.
 ---
 
 ## Checkpoint: Final Completion
-- [ ] All 10 tasks verified and checked off.
-- [ ] All 5 checkpoints cleared.
-- [ ] Clean git diff ready for user review.
+- [x] All 10 tasks verified and checked off.
+- [x] All 5 checkpoints cleared.
+- [x] Clean git diff ready for user review.

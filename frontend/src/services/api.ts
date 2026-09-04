@@ -82,6 +82,69 @@ export async function confirmCriteria(
   return res.json();
 }
 
+export async function updateCriteria(
+  criteriaId: string,
+  updates: Partial<ConfirmedCriteriaModel>
+): Promise<ConfirmedCriteriaModel> {
+  const res = await fetch(`${BASE_URL}/elicitation/criteria/${criteriaId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error('Failed to update criteria');
+  return res.json();
+}
+
+export async function resolveAmbiguity(
+  criteriaId: string,
+  findingId: string,
+  resolution: string,
+  createRule: boolean = true,
+  ruleType: 'domain_rules' | 'edge_cases' | 'safety_policies' = 'domain_rules'
+): Promise<ConfirmedCriteriaModel> {
+  const res = await fetch(`${BASE_URL}/elicitation/criteria/${criteriaId}/ambiguities/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      finding_id: findingId,
+      resolution,
+      create_rule: createRule,
+      rule_type: ruleType,
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to resolve ambiguity');
+  return res.json();
+}
+
+export async function dismissAmbiguity(
+  criteriaId: string,
+  findingId: string
+): Promise<ConfirmedCriteriaModel> {
+  const res = await fetch(`${BASE_URL}/elicitation/criteria/${criteriaId}/ambiguities/dismiss`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ finding_id: findingId }),
+  });
+  if (!res.ok) throw new Error('Failed to dismiss ambiguity');
+  return res.json();
+}
+
+export async function getSampleAgents(): Promise<Array<{ id: string; name: string; description: string; spec: string; tools: string[] }>> {
+  const res = await fetch(`${BASE_URL}/ingest/sample-agents`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function inspectAgent(spec: string): Promise<{ spec: string; valid: boolean; tools: string[]; error?: string }> {
+  const res = await fetch(`${BASE_URL}/ingest/inspect-agent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spec }),
+  });
+  if (!res.ok) throw new Error('Failed to inspect agent');
+  return res.json();
+}
+
 export async function synthesizeDataset(payload: {
   use_case: string;
   domain_rules: string[];

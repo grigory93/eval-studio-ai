@@ -55,20 +55,32 @@ export interface AmbiguityFinding {
   category: string;
   description: string;
   suggested_question: string;
+  status?: 'unresolved' | 'resolved' | 'dismissed';
   resolved: boolean;
   resolution?: string;
+  suggested_options?: string[];
 }
 
 export interface ConfirmedCriteriaModel {
   criteria_id: string;
   use_case: string;
   target_agent_description: string;
+  target_agent_path?: string;
   domain_rules: string[];
   edge_cases: string[];
   safety_policies: string[];
   expected_tools: string[];
+  ambiguities?: AmbiguityFinding[];
   evaluation_rubrics: Record<string, string>;
   is_confirmed: boolean;
+}
+
+export interface SampleAgentInfo {
+  id: string;
+  name: string;
+  description: string;
+  spec: string;
+  tools: string[];
 }
 
 export interface ElicitationMessage {

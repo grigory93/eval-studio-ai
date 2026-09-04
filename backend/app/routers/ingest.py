@@ -166,12 +166,6 @@ async def ingest_raw_text(payload: TextInputRequest):
 async def get_document(doc_id: str):
     """
     Retrieves a previously parsed requirement document by its unique ID.
-
-    Args:
-        doc_id (str): Unique document identifier.
-
-    Returns:
-        RequirementDocModel: Stored document model.
     """
     if doc_id not in _DOCUMENT_STORE:
         raise HTTPException(
@@ -183,6 +177,51 @@ async def get_document(doc_id: str):
             },
         )
     return _DOCUMENT_STORE[doc_id]
+
+
+class InspectAgentRequest(BaseModel):
+    spec: str = Field(..., description="Agent entrypoint specifier, e.g. path/to/agent.py:root_agent")
+
+
+class InspectAgentResponse(BaseModel):
+    spec: str
+    valid: bool
+    tools: list[str] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+@router.get("/sample-agents")
+async def get_sample_agents():
+    """Returns preset ADK sample agents and their verified tools."""
+    from app.core.bridge import inspect_agent_tools
+    return [
+        {
+            "id": "customer-support",
+            "name": "Customer Support ADK Agent",
+            "description": "E-commerce refund and order management agent with lookup and refund tools.",
+            "spec": "examples/customer_support_adk/agent.py:root_agent",
+            "tools": inspect_agent_tools("examples/customer_support_adk/agent.py:root_agent"),
+        },
+        {
+            "id": "hr-benefits",
+            "name": "HR Benefits ADK Agent",
+            "description": "Enterprise HR employee policy advisor covering PTO, healthcare, and 401(k).",
+            "spec": "examples/hr_benefits_adk/agent.py:root_agent",
+            "tools": inspect_agent_tools("examples/hr_benefits_adk/agent.py:root_agent"),
+        },
+    ]
+
+
+@router.post("/inspect-agent", response_model=InspectAgentResponse)
+async def inspect_agent_endpoint(payload: InspectAgentRequest):
+    """Validates target agent spec and extracts declared tools."""
+    from app.core.bridge import inspect_agent_tools, load_adk_agent
+    try:
+        load_adk_agent(payload.spec)
+        tools = inspect_agent_tools(payload.spec)
+        return InspectAgentResponse(spec=payload.spec, valid=True, tools=tools)
+    except Exception as e:
+        return InspectAgentResponse(spec=payload.spec, valid=False, tools=[], error=str(e))
 
 
 def get_document_by_id(doc_id: str) -> Optional[RequirementDocModel]:

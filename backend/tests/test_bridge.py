@@ -4,7 +4,7 @@ Unit tests for ADK Agent Loader and Inspect Solver Bridge.
 
 import pytest
 from unittest.mock import MagicMock
-from app.core.bridge import load_adk_agent, adk_agent_solver
+from app.core.bridge import load_adk_agent, adk_agent_solver, inspect_agent_tools
 from inspect_ai.solver import TaskState
 
 
@@ -20,6 +20,23 @@ def test_load_adk_agent_valid_and_invalid():
 
     with pytest.raises(FileNotFoundError):
         load_adk_agent("non_existent_dir/agent.py:root_agent")
+
+
+def test_inspect_agent_tools():
+    # Customer support agent tools
+    cs_tools = inspect_agent_tools("examples/customer_support_adk/agent.py:root_agent")
+    assert "lookup_order" in cs_tools
+    assert "process_refund" in cs_tools
+    assert "escalate_to_human" in cs_tools
+
+    # HR benefits agent tools
+    hr_tools = inspect_agent_tools("examples/hr_benefits_adk/agent.py:root_agent")
+    assert "lookup_employee_pto" in hr_tools
+    assert "submit_leave_request" in hr_tools
+
+    # Invalid and missing specs return empty list without crashing
+    assert inspect_agent_tools("invalid_spec_without_colon") == []
+    assert inspect_agent_tools("non_existent_dir/agent.py:root_agent") == []
 
 
 @pytest.mark.asyncio

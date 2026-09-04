@@ -77,7 +77,16 @@ def load_adk_agent(spec: str) -> Any:
         )
 
     file_path_str, attr_name = spec.split(":", 1)
-    file_path = Path(file_path_str).resolve()
+    file_path = Path(file_path_str)
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    if not file_path.exists():
+        alt_path = repo_root / file_path_str
+        if alt_path.exists():
+            file_path = alt_path.resolve()
+        else:
+            file_path = file_path.resolve()
+    else:
+        file_path = file_path.resolve()
 
     if not file_path.exists():
         raise FileNotFoundError(
@@ -85,10 +94,10 @@ def load_adk_agent(spec: str) -> Any:
             "Please check the relative file path and ensure the agent file exists."
         )
 
-    # Add directory to sys.path to allow relative imports within the agent package
-    agent_dir = str(file_path.parent.parent)
-    if agent_dir not in sys.path:
-        sys.path.insert(0, agent_dir)
+    # Add directory to sys.path to allow imports within the agent package and repo root
+    for p in [str(repo_root), str(file_path.parent), str(file_path.parent.parent)]:
+        if p not in sys.path:
+            sys.path.insert(0, p)
 
     module_name = f"adk_target_{file_path.stem}"
     spec_obj = importlib.util.spec_from_file_location(module_name, str(file_path))
@@ -107,6 +116,23 @@ def load_adk_agent(spec: str) -> Any:
 
     agent = getattr(module, attr_name)
     return agent
+
+
+def inspect_agent_tools(spec: str) -> List[str]:
+    """
+    Inspects and extracts available tool names from a target ADK agent.
+    """
+    try:
+        agent = load_adk_agent(spec)
+        if hasattr(agent, "tools"):
+            if isinstance(agent.tools, dict):
+                return list(agent.tools.keys())
+            elif isinstance(agent.tools, list):
+                return [getattr(t, "name", str(t)) for t in agent.tools]
+        return []
+    except Exception as e:
+        logger.warning(f"Could not inspect tools for spec '{spec}': {e}")
+        return []
 
 
 import time

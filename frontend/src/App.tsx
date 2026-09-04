@@ -23,6 +23,7 @@ export const App: React.FC = () => {
 
   // Workflow artifact states
   const [doc, setDoc] = useState<RequirementDocModel | null>(null);
+  const [targetAgentPath, setTargetAgentPath] = useState<string>('examples/customer_support_adk/agent.py:root_agent');
   const [, setCriteria] = useState<ConfirmedCriteriaModel | null>(null);
   const [dataset, setDataset] = useState<EvalDatasetModel | null>(null);
   const [compiledTask, setCompiledTask] = useState<CompiledTaskResponse | null>(null);
@@ -37,14 +38,20 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleDocumentIngested = (ingestedDoc: RequirementDocModel) => {
+  const handleDocumentIngested = (ingestedDoc: RequirementDocModel, agentPath?: string) => {
     setDoc(ingestedDoc);
+    if (agentPath) {
+      setTargetAgentPath(agentPath);
+    }
     setCurrentStep(2);
     setMaxStepReached(Math.max(maxStepReached, 2));
   };
 
   const handleCriteriaConfirmed = async (confirmedCriteria: ConfirmedCriteriaModel) => {
     setCriteria(confirmedCriteria);
+    if (confirmedCriteria.target_agent_path) {
+      setTargetAgentPath(confirmedCriteria.target_agent_path);
+    }
     setIsProcessing(true);
     setGlobalError(null);
 
@@ -75,7 +82,7 @@ export const App: React.FC = () => {
     try {
       const compiled = await compileTask({
         dataset_id: currentDataset.id,
-        target_agent_path: 'examples/customer_support_adk/agent.py:root_agent',
+        target_agent_path: targetAgentPath,
         task_name: `eval_${currentDataset.name.toLowerCase().replace(/\s+/g, '_')}`,
         fail_on_error: false,
       });
@@ -167,6 +174,7 @@ export const App: React.FC = () => {
         {currentStep === 2 && doc && (
           <ChatInterface
             doc={doc}
+            targetAgentPath={targetAgentPath}
             onCriteriaConfirmed={handleCriteriaConfirmed}
           />
         )}

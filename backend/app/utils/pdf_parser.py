@@ -44,19 +44,23 @@ def extract_sections(text: str) -> Dict[str, str]:
     current_lines = []
 
     heading_regex = re.compile(
-        r"^(#{1,4}\s+|[0-9]+\.\s+|Section\s+[0-9]+:?\s*|POLICY\s+[A-Z0-9]+:?\s*)(.+)$",
+        r"^(#{1,4}\s+(.+)|(?:Section|POLICY)\s+[A-Z0-9]+(?::\s*|\s+)(.+)|[0-9]+\.\s+([A-Z][^.:\n]{2,60}(?::\s*|\s*$)))$",
         re.IGNORECASE,
     )
 
     for line in lines:
         stripped = line.strip()
         match = heading_regex.match(stripped)
-        if match:
+        # Avoid treating numbered list items with full sentences as headings
+        if match and not (stripped.endswith(".") and len(stripped.split()) > 6):
             if current_lines or current_section != "Overview":
-                sections[current_section] = "\n".join(current_lines).strip()
+                body = "\n".join(current_lines).strip()
+                if body or current_section != "Overview":
+                    sections[current_section] = body
                 current_lines = []
-            heading_title = match.group(2).strip()
-            current_section = heading_title
+            # Extract matched heading text
+            heading_title = match.group(2) or match.group(3) or match.group(4) or match.group(1)
+            current_section = heading_title.strip().rstrip(":")
         else:
             current_lines.append(line)
 

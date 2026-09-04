@@ -44,5 +44,7 @@ class CompiledTaskResponse(BaseModel):
     task_id: str
     task_name: str
     task_code: str = Field(..., description="Runnable Inspect AI Python task script")
+    samples_json: Optional[str] = Field(default=None, description="Serialized JSON of raw dataset samples")
+    sample_count: Optional[int] = Field(default=None, description="Total sample count")
     mermaid_diagram: MermaidDiagramModel
     config: InspectTaskConfig

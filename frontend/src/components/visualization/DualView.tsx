@@ -24,7 +24,7 @@ export const DualView: React.FC<DualViewProps> = ({
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-medium mb-1">
             <Sparkles className="w-3.5 h-3.5" />
-            Step 4: Dual-View Workflow Architecture
+            Step 5: Task View & Architecture
           </div>
           <h2 className="text-2xl font-bold text-slate-100 tracking-tight">
             {compiledTask.task_name}
@@ -99,7 +99,12 @@ export const DualView: React.FC<DualViewProps> = ({
             <MermaidViewer chart={compiledTask.mermaid_diagram.diagram_code} />
           </div>
         ) : (
-          <CodeViewer code={compiledTask.task_code} filename={`${compiledTask.task_name}.py`} />
+          <CodeViewer
+            taskCode={compiledTask.task_code}
+            samplesJson={compiledTask.samples_json}
+            sampleCount={compiledTask.sample_count}
+            filename={`${compiledTask.task_name}.py`}
+          />
         )}
       </div>
 

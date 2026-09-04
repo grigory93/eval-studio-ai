@@ -90,7 +90,8 @@ async def test_complete_e2e_evaluation_workflow():
         assert compile_res.status_code == 200
         compiled_task = compile_res.json()
         assert "sequenceDiagram" in compiled_task["mermaid_diagram"]["diagram_code"]
-        assert "DATASET = MemoryDataset" in compiled_task["task_code"]
+        assert "MemoryDataset(" in compiled_task["task_code"]
+        assert "get_dataset()" in compiled_task["task_code"]
 
         # -------------------------------------------------------------
         # 5. Live Evaluation Execution in Sandbox Subprocess

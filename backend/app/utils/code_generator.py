@@ -9,11 +9,8 @@ from app.models.dataset import EvalDatasetModel
 from app.models.task import InspectTaskConfig
 
 
-def generate_task_python_code(
-    dataset: EvalDatasetModel,
-    config: InspectTaskConfig,
-) -> str:
-    """Generates runnable Python code for the Inspect AI evaluation task."""
+def serialize_dataset_samples(dataset: EvalDatasetModel) -> str:
+    """Serializes dataset samples to formatted JSON string."""
     sample_records: List[Dict[str, Any]] = []
     for s in dataset.samples:
         sample_records.append({
@@ -22,8 +19,20 @@ def generate_task_python_code(
             "target": s.target,
             "metadata": s.metadata.model_dump(),
         })
+    return json.dumps(sample_records, indent=4)
 
-    samples_json_str = json.dumps(sample_records, indent=4)
+
+def generate_task_python_code(
+    dataset: EvalDatasetModel,
+    config: InspectTaskConfig,
+) -> str:
+    """
+    Generates runnable Python code for the Inspect AI evaluation task.
+    The @task definition, solvers, and multi-scorers are placed at the top
+    of the generated script immediately below imports, with RAW_SAMPLES
+    placed cleanly at the bottom to maximize scannability.
+    """
+    samples_json_str = serialize_dataset_samples(dataset)
     target_agent_path = config.target_agent_path
 
     code = f'''"""
@@ -45,30 +54,14 @@ from app.core.scorers import (
 )
 from app.core.bridge import adk_agent_solver
 
-# 1. Dataset Samples ({len(dataset.samples)} Categorized Test Cases)
-RAW_SAMPLES = {samples_json_str}
 
-DATASET_SAMPLES = [
-    Sample(
-        id=s["id"],
-        input=s["input"],
-        target=s["target"],
-        metadata=s["metadata"],
-    )
-    for s in RAW_SAMPLES
-]
-
-DATASET = MemoryDataset(
-    samples=DATASET_SAMPLES,
-    name="{dataset.name}",
-    location="memory",
-)
-
-# 2. Inspect Task Definition with Multi-Scorers and Fault Tolerance
+# =====================================================================
+# 1. Inspect Task Definition with Multi-Scorers and Fault Tolerance
+# =====================================================================
 @task
 def {config.task_name}() -> Task:
     return Task(
-        dataset=DATASET,
+        dataset=get_dataset(),
         solver=adk_agent_solver(target_spec="{target_agent_path}"),
         scorer=[
             model_graded_qa_scorer(),
@@ -79,6 +72,31 @@ def {config.task_name}() -> Task:
         time_limit={config.time_limit_seconds or 60},
         message_limit={config.message_limit or 10},
     )
+
+
+# =====================================================================
+# 2. Dataset Loader & Memory Dataset Builder
+# =====================================================================
+def get_dataset() -> MemoryDataset:
+    return MemoryDataset(
+        samples=[
+            Sample(
+                id=s["id"],
+                input=s["input"],
+                target=s["target"],
+                metadata=s["metadata"],
+            )
+            for s in RAW_SAMPLES
+        ],
+        name="{dataset.name}",
+        location="memory",
+    )
+
+
+# =====================================================================
+# 3. Categorized Test Samples ({len(dataset.samples)} Records)
+# =====================================================================
+RAW_SAMPLES = {samples_json_str}
 
 
 if __name__ == "__main__":

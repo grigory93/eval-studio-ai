@@ -131,6 +131,8 @@ export interface CompiledTaskResponse {
   task_id: string;
   task_name: string;
   task_code: string;
+  samples_json?: string;
+  sample_count?: number;
   mermaid_diagram: MermaidDiagramModel;
   config: InspectTaskConfig;
 }

@@ -7,7 +7,7 @@ Follows the planning-and-task-breakdown specification.
 
 ## Status Overview
 - **Phase 1: Dedicated Target Agent Selection Step (Step 1)** -> [x] COMPLETED
-- **Phase 2: Task View Code & Dataset Samples Decoupling (Step 5)** -> [ ] PENDING
+- **Phase 2: Task View Code & Dataset Samples Decoupling (Step 5)** -> [x] COMPLETED
 - **Phase 3: Socratic Elicitation Workbench Simplification (Step 3)** -> [ ] PENDING
 - **Phase 4: Scorecard Category-Grouped Filtering (Step 7)** -> [ ] PENDING
 - **Phase 5: Verification & Quality Gate** -> [ ] PENDING
@@ -104,12 +104,12 @@ Follows the planning-and-task-breakdown specification.
 **Description:** Refactor `backend/app/utils/code_generator.py` so that the `@task` function, solvers, and multi-scorers are placed at the top of the file immediately below imports, with dataset loading structured into a helper function and `RAW_SAMPLES` placed cleanly at the bottom.
 
 **Acceptance criteria:**
-- [ ] `@task` definition is rendered first in the generated Python script.
-- [ ] Dataset loading is structured via `get_dataset()` helper.
-- [ ] Python syntax compiles cleanly via `compile()`.
+- [x] `@task` definition is rendered first in the generated Python script.
+- [x] Dataset loading is structured via `get_dataset()` helper.
+- [x] Python syntax compiles cleanly via `compile()`.
 
 **Verification:**
-- [ ] Tests pass: `cd backend && uv run pytest tests/ -v`
+- [x] Tests pass: `cd backend && uv run pytest tests/ -v`
 
 **Dependencies:** None
 
@@ -125,14 +125,14 @@ Follows the planning-and-task-breakdown specification.
 **Description:** Update `frontend/src/components/visualization/CodeViewer.tsx` with a multi-file tab switcher (`task.py` vs `samples.json`), including sample count badges and file-specific copy/download actions. Update `frontend/src/components/visualization/DualView.tsx` to pass both task code and formatted dataset samples JSON to `CodeViewer`.
 
 **Acceptance criteria:**
-- [ ] Sub-tabs `task.py` and `samples.json` toggle code views instantly.
-- [ ] `task.py` tab displays clean Inspect AI task code (~60 lines) without sample clutter.
-- [ ] `samples.json` tab displays formatted dataset sample records with count badge.
-- [ ] Copy and Download buttons operate on the active sub-tab.
+- [x] Sub-tabs `task.py` and `samples.json` toggle code views instantly.
+- [x] `task.py` tab displays clean Inspect AI task code (~60 lines) without sample clutter.
+- [x] `samples.json` tab displays formatted dataset sample records with count badge.
+- [x] Copy and Download buttons operate on the active sub-tab.
 
 **Verification:**
-- [ ] Build succeeds: `cd frontend && npm run build`
-- [ ] Manual check: In Step 5, switching between tabs updates code and sample views cleanly.
+- [x] Build succeeds: `cd frontend && npm run build`
+- [x] Manual check: In Step 5, switching between tabs updates code and sample views cleanly.
 
 **Dependencies:** Task 4
 
@@ -145,10 +145,10 @@ Follows the planning-and-task-breakdown specification.
 ---
 
 ## Checkpoint: After Tasks 4-5 (Phase 2 Complete)
-- [ ] Backend tests pass (`uv run pytest tests/ -v`).
-- [ ] Generated `task.py` has `@task` at top.
-- [ ] Multi-tab switcher in Task View allows inspecting task code without scrolling past samples.
-- [ ] Review with user before proceeding to Phase 3.
+- [x] Backend tests pass (`uv run pytest tests/ -v`).
+- [x] Generated `task.py` has `@task` at top.
+- [x] Multi-tab switcher in Task View allows inspecting task code without scrolling past samples.
+- [x] Review with user before proceeding to Phase 3.
 
 ---
 

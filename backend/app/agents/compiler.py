@@ -13,7 +13,7 @@ from app.models.task import (
     MermaidDiagramModel,
     ScorerConfig,
 )
-from app.utils.code_generator import generate_task_python_code
+from app.utils.code_generator import generate_task_python_code, serialize_dataset_samples
 
 
 class TaskCompiler:
@@ -79,12 +79,15 @@ class TaskCompiler:
         )
 
         task_code = generate_task_python_code(dataset=dataset, config=config)
+        samples_json_str = serialize_dataset_samples(dataset)
         mermaid_diagram = self._generate_mermaid_diagram(dataset, target_agent_path)
 
         return CompiledTaskResponse(
             task_id=f"task-{uuid.uuid4().hex[:8]}",
             task_name=clean_task_name,
             task_code=task_code,
+            samples_json=samples_json_str,
+            sample_count=len(dataset.samples),
             mermaid_diagram=mermaid_diagram,
             config=config,
         )

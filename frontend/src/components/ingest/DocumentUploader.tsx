@@ -1,28 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, FileText, Sparkles, ArrowRight, CheckCircle2, AlertCircle, Loader2, BookOpen, Bot } from 'lucide-react';
-import { uploadDocument, ingestRawText, inspectAgent, getSampleAgents } from '../../services/api';
-import { RequirementDocModel, SampleAgentInfo } from '../../types';
+import { uploadDocument, ingestRawText } from '../../services/api';
+import { RequirementDocModel } from '../../types';
 
 interface DocumentUploaderProps {
-  onDocumentIngested: (doc: RequirementDocModel, targetAgentPath: string) => void;
+  onDocumentIngested: (doc: RequirementDocModel, targetAgentPath?: string) => void;
+  targetAgentPath?: string;
 }
-
-const DEFAULT_SAMPLE_AGENTS: SampleAgentInfo[] = [
-  {
-    id: 'customer-support',
-    name: 'Customer Support ADK Agent',
-    description: 'E-commerce refund and order management agent with lookup and refund tools.',
-    spec: 'examples/customer_support_adk/agent.py:root_agent',
-    tools: ['lookup_order', 'process_refund', 'escalate_to_human'],
-  },
-  {
-    id: 'hr-benefits',
-    name: 'HR Benefits ADK Agent',
-    description: 'Enterprise HR employee policy advisor covering PTO, healthcare, and 401(k).',
-    spec: 'examples/hr_benefits_adk/agent.py:root_agent',
-    tools: ['lookup_employee_pto', 'submit_leave_request'],
-  },
-];
 
 const SAMPLE_POLICIES = [
   {
@@ -68,7 +52,10 @@ All primary caregivers are eligible for 16 weeks of fully paid parental leave fo
   },
 ];
 
-export const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onDocumentIngested }) => {
+export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
+  onDocumentIngested,
+  targetAgentPath,
+}) => {
   const [activeTab, setActiveTab] = useState<'upload' | 'text' | 'sample'>('sample');
   const [dragActive, setDragActive] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -76,30 +63,8 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onDocumentIn
   const [textTitle, setTextTitle] = useState('');
   const [rawText, setRawText] = useState('');
   const [parsedDoc, setParsedDoc] = useState<RequirementDocModel | null>(null);
-  const [targetAgentSpec, setTargetAgentSpec] = useState<string>('examples/customer_support_adk/agent.py:root_agent');
-  const [sampleAgents, setSampleAgents] = useState<SampleAgentInfo[]>(DEFAULT_SAMPLE_AGENTS);
-  const [agentTools, setAgentTools] = useState<string[]>(DEFAULT_SAMPLE_AGENTS[0].tools);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  React.useEffect(() => {
-    getSampleAgents().then((agents) => {
-      if (agents && agents.length > 0) {
-        setSampleAgents(agents);
-      }
-    }).catch(() => {});
-  }, []);
-
-  const handleAgentSelect = async (spec: string) => {
-    setTargetAgentSpec(spec);
-    try {
-      const info = await inspectAgent(spec);
-      setAgentTools(info.tools);
-    } catch {
-      const match = sampleAgents.find(a => a.spec === spec);
-      if (match) setAgentTools(match.tools);
-    }
-  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -176,7 +141,7 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onDocumentIn
       <div className="text-center space-y-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-medium">
           <Sparkles className="w-3.5 h-3.5" />
-          Step 1: Document & Requirement Ingestion
+          Step 2: Document & Requirement Ingestion
         </div>
         <h2 className="text-2xl font-bold text-slate-100 tracking-tight">
           Define What You Want to Evaluate
@@ -184,47 +149,13 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onDocumentIn
         <p className="text-sm text-slate-400 max-w-xl mx-auto">
           Upload policy documents, user stories, or select a sample benchmark. EvalStudio AI's Socratic agents will extract rules and identify edge-case gaps.
         </p>
-      </div>
-
-      {/* Target Agent Selector */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bot className="w-4 h-4 text-sky-400" />
-            <span className="text-xs font-semibold text-slate-200">Target ADK Agent Under Test</span>
-          </div>
-          <span className="text-[11px] text-emerald-400 font-mono bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded">
-            {agentTools.length} Tools Inferred / Detected
-          </span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {sampleAgents.map((ag) => (
-            <button
-              key={ag.id}
-              type="button"
-              onClick={() => handleAgentSelect(ag.spec)}
-              className={`p-3 rounded-lg border text-left transition-all ${
-                targetAgentSpec === ag.spec
-                  ? 'bg-sky-950/40 border-sky-500/60 shadow-sm'
-                  : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              <p className="text-xs font-semibold text-slate-200">{ag.name}</p>
-              <p className="text-[11px] text-slate-400 truncate mt-0.5 font-mono">{ag.spec}</p>
-            </button>
-          ))}
-        </div>
-        {agentTools.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <span className="text-[11px] text-slate-500">Declared tools:</span>
-            {agentTools.map((tool, idx) => (
-              <span
-                key={idx}
-                className="px-2 py-0.5 bg-slate-950 border border-slate-800 rounded text-[11px] font-mono text-sky-300"
-              >
-                {tool}
-              </span>
-            ))}
+        {targetAgentPath && (
+          <div className="pt-1 flex items-center justify-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300">
+              <Bot className="w-3.5 h-3.5 text-sky-400" />
+              <span className="text-slate-400">Target Agent Under Test:</span>
+              <span className="font-mono text-sky-300 font-semibold">{targetAgentPath}</span>
+            </div>
           </div>
         )}
       </div>
@@ -462,7 +393,7 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({ onDocumentIn
           <div className="pt-2 flex justify-end">
             <button
               type="button"
-              onClick={() => onDocumentIngested(parsedDoc, targetAgentSpec)}
+              onClick={() => onDocumentIngested(parsedDoc, targetAgentPath)}
               className="px-6 py-2.5 bg-sky-600 hover:bg-sky-500 text-white font-medium text-sm rounded-lg shadow-md transition-all flex items-center gap-2"
             >
               Proceed to Socratic Elicitation

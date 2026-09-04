@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Bot,
   FileText,
   MessageSquare,
   Database,
@@ -16,12 +17,13 @@ interface StepNavigatorProps {
 }
 
 const STEPS = [
-  { id: 1, label: '1. Ingest Spec', icon: FileText },
-  { id: 2, label: '2. Elicitation', icon: MessageSquare },
-  { id: 3, label: '3. Dataset Grid', icon: Database },
-  { id: 4, label: '4. Task View', icon: Layers },
-  { id: 5, label: '5. Live Run', icon: PlayCircle },
-  { id: 6, label: '6. Scorecard', icon: Award },
+  { id: 1, label: '1. Target Agent', icon: Bot },
+  { id: 2, label: '2. Ingest Spec', icon: FileText },
+  { id: 3, label: '3. Elicitation', icon: MessageSquare },
+  { id: 4, label: '4. Dataset Grid', icon: Database },
+  { id: 5, label: '5. Task View', icon: Layers },
+  { id: 6, label: '6. Live Run', icon: PlayCircle },
+  { id: 7, label: '7. Scorecard', icon: Award },
 ];
 
 export const StepNavigator: React.FC<StepNavigatorProps> = ({

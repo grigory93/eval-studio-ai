@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Header } from './components/layout/Header';
 import { StepNavigator } from './components/layout/StepNavigator';
+import { AgentSelector } from './components/agent/AgentSelector';
 import { DocumentUploader } from './components/ingest/DocumentUploader';
 import { ChatInterface } from './components/chat/ChatInterface';
 import { DatasetGrid } from './components/dataset/DatasetGrid';
@@ -17,7 +18,7 @@ import {
 import { synthesizeDataset, compileTask, startEvaluation } from './services/api';
 
 export const App: React.FC = () => {
-  // Wizard state machine
+  // Wizard state machine (7 Steps)
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [maxStepReached, setMaxStepReached] = useState<number>(1);
 
@@ -38,13 +39,19 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleAgentSelected = (spec: string, _tools: string[]) => {
+    setTargetAgentPath(spec);
+    setCurrentStep(2);
+    setMaxStepReached((prev) => Math.max(prev, 2));
+  };
+
   const handleDocumentIngested = (ingestedDoc: RequirementDocModel, agentPath?: string) => {
     setDoc(ingestedDoc);
     if (agentPath) {
       setTargetAgentPath(agentPath);
     }
-    setCurrentStep(2);
-    setMaxStepReached(Math.max(maxStepReached, 2));
+    setCurrentStep(3);
+    setMaxStepReached((prev) => Math.max(prev, 3));
   };
 
   const handleCriteriaConfirmed = async (confirmedCriteria: ConfirmedCriteriaModel) => {
@@ -65,8 +72,8 @@ export const App: React.FC = () => {
       });
 
       setDataset(synthesized);
-      setCurrentStep(3);
-      setMaxStepReached(Math.max(maxStepReached, 3));
+      setCurrentStep(4);
+      setMaxStepReached((prev) => Math.max(prev, 4));
     } catch (err: any) {
       setGlobalError(err.message || 'Failed to synthesize dataset');
     } finally {
@@ -88,8 +95,8 @@ export const App: React.FC = () => {
       });
 
       setCompiledTask(compiled);
-      setCurrentStep(4);
-      setMaxStepReached(Math.max(maxStepReached, 4));
+      setCurrentStep(5);
+      setMaxStepReached((prev) => Math.max(prev, 5));
     } catch (err: any) {
       setGlobalError(err.message || 'Failed to compile Inspect AI task');
     } finally {
@@ -110,8 +117,8 @@ export const App: React.FC = () => {
       });
 
       setActiveEvalId(eval_id);
-      setCurrentStep(5);
-      setMaxStepReached(Math.max(maxStepReached, 5));
+      setCurrentStep(6);
+      setMaxStepReached((prev) => Math.max(prev, 6));
     } catch (err: any) {
       setGlobalError(err.message || 'Failed to start evaluation runner');
     } finally {
@@ -121,8 +128,8 @@ export const App: React.FC = () => {
 
   const handleEvaluationCompleted = (completedScorecard: ExecutiveScorecardReport) => {
     setScorecard(completedScorecard);
-    setCurrentStep(6);
-    setMaxStepReached(Math.max(maxStepReached, 6));
+    setCurrentStep(7);
+    setMaxStepReached((prev) => Math.max(prev, 7));
   };
 
   const handleReset = () => {
@@ -168,10 +175,20 @@ export const App: React.FC = () => {
       {/* Wizard Step Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {currentStep === 1 && (
-          <DocumentUploader onDocumentIngested={handleDocumentIngested} />
+          <AgentSelector
+            initialSpec={targetAgentPath}
+            onAgentSelected={handleAgentSelected}
+          />
         )}
 
-        {currentStep === 2 && doc && (
+        {currentStep === 2 && (
+          <DocumentUploader
+            targetAgentPath={targetAgentPath}
+            onDocumentIngested={handleDocumentIngested}
+          />
+        )}
+
+        {currentStep === 3 && doc && (
           <ChatInterface
             doc={doc}
             targetAgentPath={targetAgentPath}
@@ -179,7 +196,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentStep === 3 && dataset && (
+        {currentStep === 4 && dataset && (
           <DatasetGrid
             dataset={dataset}
             onProceedToTask={handleProceedToTask}
@@ -187,7 +204,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentStep === 4 && compiledTask && (
+        {currentStep === 5 && compiledTask && (
           <DualView
             compiledTask={compiledTask}
             onStartExecution={handleStartExecution}
@@ -195,19 +212,19 @@ export const App: React.FC = () => {
           />
         )}
 
-        {currentStep === 5 && activeEvalId && compiledTask && (
+        {currentStep === 6 && activeEvalId && compiledTask && (
           <LiveProgress
             evalId={activeEvalId}
             taskName={compiledTask.task_name}
             onEvaluationCompleted={handleEvaluationCompleted}
-            onCancel={() => setCurrentStep(4)}
+            onCancel={() => setCurrentStep(5)}
           />
         )}
 
-        {currentStep === 6 && scorecard && (
+        {currentStep === 7 && scorecard && (
           <ScorecardDashboard
             scorecard={scorecard}
-            onReEvaluate={() => setCurrentStep(4)}
+            onReEvaluate={() => setCurrentStep(5)}
           />
         )}
       </main>

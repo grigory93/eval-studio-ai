@@ -6,7 +6,7 @@ Follows the planning-and-task-breakdown specification.
 -->
 
 ## Status Overview
-- **Phase 1: Dedicated Target Agent Selection Step (Step 1)** -> [ ] PENDING
+- **Phase 1: Dedicated Target Agent Selection Step (Step 1)** -> [x] COMPLETED
 - **Phase 2: Task View Code & Dataset Samples Decoupling (Step 5)** -> [ ] PENDING
 - **Phase 3: Socratic Elicitation Workbench Simplification (Step 3)** -> [ ] PENDING
 - **Phase 4: Scorecard Category-Grouped Filtering (Step 7)** -> [ ] PENDING
@@ -25,13 +25,13 @@ Follows the planning-and-task-breakdown specification.
 **Description:** Implement `frontend/src/components/agent/AgentSelector.tsx` to handle target ADK agent selection as the new first step in the wizard. The component displays pre-configured sample ADK agents with domain descriptions and declared tool chips, supports custom local entrypoint inputs (`path/to/agent.py:root_agent`) with live inspection via `inspectAgent()`, renders a summary card of detected tools and validation badge, and provides a prominent "Proceed to Specification Ingestion →" CTA.
 
 **Acceptance criteria:**
-- [ ] Renders sample agent benchmark cards (`customer-support`, `hr-benefits`) with selection radio and tool badges.
-- [ ] Provides text input for custom local agent entrypoint with live validation status.
-- [ ] Displays inspected tools summary and triggers `onAgentSelected(spec, tools)` on CTA click.
+- [x] Renders sample agent benchmark cards (`customer-support`, `hr-benefits`) with selection radio and tool badges.
+- [x] Provides text input for custom local agent entrypoint with live validation status.
+- [x] Displays inspected tools summary and triggers `onAgentSelected(spec, tools)` on CTA click.
 
 **Verification:**
-- [ ] Build succeeds: `cd frontend && npm run build`
-- [ ] Manual check: Agent cards render and selection updates state.
+- [x] Build succeeds: `cd frontend && npm run build`
+- [x] Manual check: Agent cards render and selection updates state.
 
 **Dependencies:** None
 
@@ -47,13 +47,13 @@ Follows the planning-and-task-breakdown specification.
 **Description:** Update `frontend/src/components/layout/StepNavigator.tsx` to include `1. Target Agent` as the first step, expanding the total step count from 6 to 7 (`1. Target Agent`, `2. Ingest Spec`, `3. Elicitation`, `4. Dataset Grid`, `5. Task View`, `6. Live Run`, `7. Scorecard`).
 
 **Acceptance criteria:**
-- [ ] `STEPS` array defines all 7 steps with appropriate icons (`Bot`, `FileText`, `MessageSquare`, `Database`, `Layers`, `PlayCircle`, `Award`).
-- [ ] Navigation gates prevent clicking ahead past `maxStepReached`.
-- [ ] Active and completed states render accurately.
+- [x] `STEPS` array defines all 7 steps with appropriate icons (`Bot`, `FileText`, `MessageSquare`, `Database`, `Layers`, `PlayCircle`, `Award`).
+- [x] Navigation gates prevent clicking ahead past `maxStepReached`.
+- [x] Active and completed states render accurately.
 
 **Verification:**
-- [ ] Build succeeds: `cd frontend && npm run build`
-- [ ] Manual check: All 7 step pills visible and clickable when reached.
+- [x] Build succeeds: `cd frontend && npm run build`
+- [x] Manual check: All 7 step pills visible and clickable when reached.
 
 **Dependencies:** Task 1
 
@@ -69,13 +69,13 @@ Follows the planning-and-task-breakdown specification.
 **Description:** Refactor `frontend/src/components/ingest/DocumentUploader.tsx` to remove the embedded agent selection card, refocusing it 100% on requirements and policy documents. Update `frontend/src/App.tsx` state machine to initialize at Step 1 (`AgentSelector`), wire `handleAgentSelected` to advance to Step 2, and shift all downstream step indices cleanly.
 
 **Acceptance criteria:**
-- [ ] `DocumentUploader` has no agent selector card; header indicates "Step 2: Document & Requirement Ingestion".
-- [ ] `App.tsx` renders `AgentSelector` at step 1 and advances to step 2 upon selection.
-- [ ] Wizard state machine correctly handles transitions from Step 1 to Step 7.
+- [x] `DocumentUploader` has no agent selector card; header indicates "Step 2: Document & Requirement Ingestion".
+- [x] `App.tsx` renders `AgentSelector` at step 1 and advances to step 2 upon selection.
+- [x] Wizard state machine correctly handles transitions from Step 1 to Step 7.
 
 **Verification:**
-- [ ] Build succeeds: `cd frontend && npm run build`
-- [ ] Manual check: App loads on Step 1, selecting an agent advances to Step 2, ingesting spec advances to Step 3.
+- [x] Build succeeds: `cd frontend && npm run build`
+- [x] Manual check: App loads on Step 1, selecting an agent advances to Step 2, ingesting spec advances to Step 3.
 
 **Dependencies:** Task 1, Task 2
 
@@ -88,10 +88,10 @@ Follows the planning-and-task-breakdown specification.
 ---
 
 ## Checkpoint: After Tasks 1-3 (Phase 1 Complete)
-- [ ] Frontend builds cleanly with 0 TypeScript errors (`cd frontend && npm run build`).
-- [ ] Step 1 allows selecting an agent and transitions smoothly to Step 2.
-- [ ] Document uploader on Step 2 is clean and free of agent selection clutter.
-- [ ] Review with user before proceeding to Phase 2.
+- [x] Frontend builds cleanly with 0 TypeScript errors (`cd frontend && npm run build`).
+- [x] Step 1 allows selecting an agent and transitions smoothly to Step 2.
+- [x] Document uploader on Step 2 is clean and free of agent selection clutter.
+- [x] Review with user before proceeding to Phase 2.
 
 ---
 

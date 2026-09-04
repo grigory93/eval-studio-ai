@@ -8,7 +8,7 @@ Follows the planning-and-task-breakdown specification.
 ## Status Overview
 - **Phase 1: Dedicated Target Agent Selection Step (Step 1)** -> [x] COMPLETED
 - **Phase 2: Task View Code & Dataset Samples Decoupling (Step 5)** -> [x] COMPLETED
-- **Phase 3: Socratic Elicitation Workbench Simplification (Step 3)** -> [ ] PENDING
+- **Phase 3: Socratic Elicitation Workbench Simplification (Step 3)** -> [x] COMPLETED
 - **Phase 4: Scorecard Category-Grouped Filtering (Step 7)** -> [ ] PENDING
 - **Phase 5: Verification & Quality Gate** -> [ ] PENDING
 
@@ -161,19 +161,20 @@ Follows the planning-and-task-breakdown specification.
 **Description:** Reorganize `frontend/src/components/chat/ChatInterface.tsx` from a cramped 3-column layout into a balanced 2-Pane Workspace (`lg:grid-cols-12`: 7 cols left, 5 cols right). The Left Pane provides tabbed switching between Tab 1 ("Detected Gaps & Ambiguities" with open badge counter) and Tab 2 ("Socratic Chat Assistant").
 
 **Acceptance criteria:**
-- [ ] Left Pane (~60%) hosts tabs for "Detected Gaps & Ambiguities" and "Socratic Chat Assistant".
-- [ ] Ambiguity tab displays full-width cards with 1-click decision pills and inline custom resolution.
-- [ ] Socratic Chat tab provides conversational thread with Gemini 2.5 and quick-reply chips.
-- [ ] Open badge indicator live-updates as ambiguities are resolved.
+- [x] Left Pane (~60%) hosts tabs for "Detected Gaps & Ambiguities" and "Socratic Chat Assistant".
+- [x] Ambiguity tab displays full-width cards with 1-click decision pills and inline custom resolution.
+- [x] Socratic Chat tab provides conversational thread with Gemini 2.5 and quick-reply chips.
+- [x] Open badge indicator live-updates as ambiguities are resolved.
 
 **Verification:**
-- [ ] Build succeeds: `cd frontend && npm run build`
-- [ ] Manual check: Toggling tabs switches views smoothly without horizontal squeeze.
+- [x] Build succeeds: `cd frontend && npm run build`
+- [x] Manual check: Toggling tabs switches views smoothly without horizontal squeeze.
 
 **Dependencies:** Task 3
 
 **Files likely touched:**
 - `frontend/src/components/chat/ChatInterface.tsx`
+- `frontend/src/components/chat/ChatInterface.test.tsx`
 
 **Estimated scope:** Medium (1 file)
 
@@ -184,28 +185,29 @@ Follows the planning-and-task-breakdown specification.
 **Description:** Implement the Right Pane (~40%) in `frontend/src/components/chat/ChatInterface.tsx` as a persistent live blueprint of Confirmed Criteria (Tools, Business Rules, Safety Constraints, Edge Cases). Supports inline editing, deletion, and additions, with a sticky bottom progress bar and "Confirm Criteria & Synthesize Dataset →" CTA.
 
 **Acceptance criteria:**
-- [ ] Confirmed criteria update reactively when rules are resolved from either active work tab.
-- [ ] Inline editing (`Edit3`), deleting (`Trash2`), and adding (`+ Add Rule`) work seamlessly.
-- [ ] Sticky bottom CTA shows progress ("N of M Gaps Addressed") and advances to Dataset Grid.
+- [x] Confirmed criteria update reactively when rules are resolved from either active work tab.
+- [x] Inline editing (`Edit3`), deleting (`Trash2`), and adding (`+ Add Rule`) work seamlessly.
+- [x] Sticky bottom CTA shows progress ("N of M Gaps Addressed") and advances to Dataset Grid.
 
 **Verification:**
-- [ ] Build succeeds: `cd frontend && npm run build`
-- [ ] Manual check: Resolving a gap or adding a rule reflects immediately in the right pane.
+- [x] Build succeeds: `cd frontend && npm run build`
+- [x] Manual check: Resolving a gap or adding a rule reflects immediately in the right pane.
 
 **Dependencies:** Task 6
 
 **Files likely touched:**
 - `frontend/src/components/chat/ChatInterface.tsx`
+- `frontend/src/components/chat/ChatInterface.test.tsx`
 
 **Estimated scope:** Medium (1 file)
 
 ---
 
 ## Checkpoint: After Tasks 6-7 (Phase 3 Complete)
-- [ ] Frontend builds cleanly (`npm run build`).
-- [ ] Step 3 displays a clean 2-Pane layout without visual congestion.
-- [ ] Real-time reactive synchronization between active work tabs and criteria pane verified.
-- [ ] Review with user before proceeding to Phase 4.
+- [x] Frontend builds cleanly (`npm run build`).
+- [x] Step 3 displays a clean 2-Pane layout without visual congestion.
+- [x] Real-time reactive synchronization between active work tabs and criteria pane verified.
+- [x] Unit tests pass: `npx vitest run src/components/chat/ChatInterface.test.tsx`.
 
 ---
 

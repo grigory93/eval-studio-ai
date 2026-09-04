@@ -17,6 +17,7 @@ import {
   Check,
   X,
   Compass,
+  MessageSquare,
 } from 'lucide-react';
 import {
   initiateElicitation,
@@ -49,6 +50,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   targetAgentPath = 'examples/customer_support_adk/agent.py:root_agent',
   onCriteriaConfirmed,
 }) => {
+  const [activeCanvasTab, setActiveCanvasTab] = useState<'gaps' | 'chat'>('gaps');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -247,6 +249,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
+  // Quick 1-click addition of a rule from chat options to confirmed criteria
+  const handleQuickAddRule = async (ruleText: string) => {
+    if (!criteria || !ruleText.trim()) return;
+    const list = [...criteria.domain_rules, ruleText.trim()];
+    try {
+      const updated = await updateCriteria(criteria.criteria_id, { domain_rules: list });
+      setCriteria(updated);
+    } catch (err) {
+      console.error('Failed to quick-add rule to criteria:', err);
+    }
+  };
+
   // 5. Direct CRUD for Criteria Items
   const handleSaveEdit = async () => {
     if (!editingItem || !criteria || !editingItem.text.trim()) return;
@@ -324,340 +338,388 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       <div className="text-center space-y-1">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-medium">
           <Sparkles className="w-3.5 h-3.5" />
-          Step 2: Interactive Socratic Elicitation Workbench
+          Step 3: Interactive Socratic Elicitation Workbench
         </div>
         <h2 className="text-2xl font-bold text-slate-100 tracking-tight">
           Resolve Detected Gaps & Refine Business Rules
         </h2>
         <p className="text-xs text-slate-400 max-w-2xl mx-auto">
-          Manage detected ambiguities as actionable work items, consult with the Socratic agent in chat, or directly add and edit business rules.
+          Review detected ambiguities in your requirements or explore edge cases with the Socratic assistant, while live criteria reflect on the right.
         </p>
       </div>
 
-      {/* Main 3-Column Workbench Grid */}
+      {/* Main 2-Pane Workbench Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* =========================================================================
-            COLUMN 1: AMBIGUITY INBOX (4 COLS)
+            PANE A (LEFT, 7 COLS, ~58-60% WIDTH): ACTIVE WORK CANVAS (GAPS vs CHAT)
             ========================================================================= */}
-        <div className="lg:col-span-4 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col h-[650px] overflow-hidden shadow-lg">
-          {/* Inbox Header */}
-          <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+        <div className="lg:col-span-7 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col h-[700px] overflow-hidden shadow-lg">
+          {/* Active Canvas Tab Header */}
+          <div className="px-4 py-2.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-                Detected Gaps & Ambiguities
-              </span>
+              <button
+                type="button"
+                onClick={() => setActiveCanvasTab('gaps')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  activeCanvasTab === 'gaps'
+                    ? 'bg-slate-800 text-white shadow-sm border border-slate-700/80'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                <span>Detected Gaps & Ambiguities</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-medium ${
+                    unresolvedGaps.length > 0
+                      ? 'bg-amber-950/80 border border-amber-800/60 text-amber-300'
+                      : 'bg-emerald-950/80 border border-emerald-800/60 text-emerald-300'
+                  }`}
+                >
+                  {unresolvedGaps.length} Open
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveCanvasTab('chat')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  activeCanvasTab === 'chat'
+                    ? 'bg-slate-800 text-white shadow-sm border border-slate-700/80'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
+                <span>Socratic Chat Assistant</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              </button>
             </div>
-            <span className="text-[11px] px-2 py-0.5 rounded-full font-mono bg-amber-950/50 border border-amber-800/50 text-amber-300">
-              {unresolvedGaps.length} Open
+
+            <span className="text-[11px] text-slate-500 font-mono hidden sm:inline">
+              Gemini 2.5 ADC
             </span>
           </div>
 
-          {/* Filter Bar */}
-          <div className="px-3 py-2 bg-slate-950/60 border-b border-slate-800/60 flex items-center gap-1.5 text-[11px]">
-            <button
-              type="button"
-              onClick={() => setAmbiguityFilter('all')}
-              className={`px-2.5 py-1 rounded transition-colors ${
-                ambiguityFilter === 'all'
-                  ? 'bg-sky-600 text-white font-semibold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              All ({ambiguities.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setAmbiguityFilter('unresolved')}
-              className={`px-2.5 py-1 rounded transition-colors ${
-                ambiguityFilter === 'unresolved'
-                  ? 'bg-amber-600 text-white font-semibold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Open ({unresolvedGaps.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setAmbiguityFilter('resolved')}
-              className={`px-2.5 py-1 rounded transition-colors ${
-                ambiguityFilter === 'resolved'
-                  ? 'bg-emerald-600 text-white font-semibold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Resolved ({resolvedGaps.length})
-            </button>
-          </div>
-
-          {/* Ambiguities Scroll List */}
-          <div className="flex-1 p-3 overflow-y-auto space-y-3">
-            {displayedAmbiguities.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500 space-y-2">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500/50" />
-                <p className="text-xs">No ambiguities matching filter.</p>
-              </div>
-            ) : (
-              displayedAmbiguities.map((amb) => {
-                const status = amb.status || (amb.resolved ? 'resolved' : 'unresolved');
-                const isResolved = status === 'resolved';
-
-                return (
-                  <div
-                    key={amb.id}
-                    className={`p-3.5 rounded-xl border text-xs space-y-2 transition-all ${
-                      isResolved
-                        ? 'bg-emerald-950/15 border-emerald-800/40 text-emerald-200/90'
-                        : status === 'dismissed'
-                        ? 'bg-slate-950/40 border-slate-800 text-slate-400 opacity-60'
-                        : 'bg-amber-950/20 border-amber-800/50 text-slate-200 shadow-sm'
+          {/* Tab 1 Content: Detected Gaps & Ambiguities */}
+          {activeCanvasTab === 'gaps' && (
+            <div className="flex flex-col flex-1 min-h-0">
+              {/* Filter Bar */}
+              <div className="px-4 py-2 bg-slate-950/60 border-b border-slate-800/60 flex items-center justify-between text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setAmbiguityFilter('all')}
+                    className={`px-2.5 py-1 rounded transition-colors ${
+                      ambiguityFilter === 'all'
+                        ? 'bg-sky-600 text-white font-semibold'
+                        : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    {/* Badge & Category */}
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`px-2 py-0.5 rounded font-semibold text-[10px] ${
+                    All ({ambiguities.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAmbiguityFilter('unresolved')}
+                    className={`px-2.5 py-1 rounded transition-colors ${
+                      ambiguityFilter === 'unresolved'
+                        ? 'bg-amber-600 text-white font-semibold'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Open ({unresolvedGaps.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAmbiguityFilter('resolved')}
+                    className={`px-2.5 py-1 rounded transition-colors ${
+                      ambiguityFilter === 'resolved'
+                        ? 'bg-emerald-600 text-white font-semibold'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Resolved ({resolvedGaps.length})
+                  </button>
+                </div>
+                <span className="text-slate-500 text-[11px]">
+                  {displayedAmbiguities.length} {displayedAmbiguities.length === 1 ? 'gap' : 'gaps'}
+                </span>
+              </div>
+
+              {/* Ambiguities Scroll List */}
+              <div className="flex-1 p-4 overflow-y-auto space-y-3.5">
+                {displayedAmbiguities.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500 space-y-2">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-500/50" />
+                    <p className="text-sm font-medium text-slate-300">No ambiguities matching filter</p>
+                    <p className="text-xs text-slate-500">All edge cases in this view have been resolved or filtered out.</p>
+                  </div>
+                ) : (
+                  displayedAmbiguities.map((amb) => {
+                    const status = amb.status || (amb.resolved ? 'resolved' : 'unresolved');
+                    const isResolved = status === 'resolved';
+
+                    return (
+                      <div
+                        key={amb.id}
+                        className={`p-4 rounded-xl border text-xs space-y-3 transition-all ${
                           isResolved
-                            ? 'bg-emerald-900/60 text-emerald-300'
+                            ? 'bg-emerald-950/15 border-emerald-800/40 text-emerald-200/90'
                             : status === 'dismissed'
-                            ? 'bg-slate-800 text-slate-400'
-                            : 'bg-amber-900/60 text-amber-300'
+                            ? 'bg-slate-950/40 border-slate-800 text-slate-400 opacity-60'
+                            : 'bg-amber-950/20 border-amber-800/50 text-slate-200 shadow-sm'
                         }`}
                       >
-                        {amb.category}
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-500">{amb.id}</span>
-                    </div>
-
-                    {/* Gap Description & Probing Question */}
-                    <p className="text-slate-300 leading-relaxed">{amb.description}</p>
-                    <p className="italic text-slate-400 bg-slate-950/40 p-2 rounded border border-slate-800/60">
-                      "{amb.suggested_question}"
-                    </p>
-
-                    {/* Resolution Status or Action Buttons */}
-                    {isResolved ? (
-                      <div className="pt-1.5 border-t border-emerald-800/30 flex items-center justify-between text-[11px]">
-                        <div className="flex items-center gap-1.5 text-emerald-400">
-                          <Check className="w-3.5 h-3.5" />
-                          <span className="truncate max-w-[200px]" title={amb.resolution}>
-                            Resolved: {amb.resolution}
+                        {/* Badge & Category */}
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={`px-2.5 py-0.5 rounded font-semibold text-[11px] ${
+                              isResolved
+                                ? 'bg-emerald-900/60 text-emerald-300'
+                                : status === 'dismissed'
+                                ? 'bg-slate-800 text-slate-400'
+                                : 'bg-amber-900/60 text-amber-300'
+                            }`}
+                          >
+                            {amb.category}
                           </span>
+                          <span className="text-[10px] font-mono text-slate-500">{amb.id}</span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleReopenAmbiguity(amb.id)}
-                          className="text-slate-400 hover:text-white text-[10px] underline ml-2"
-                        >
-                          Reopen
-                        </button>
-                      </div>
-                    ) : status === 'dismissed' ? (
-                      <div className="pt-1.5 border-t border-slate-800 flex items-center justify-between text-[11px]">
-                        <span className="text-slate-500 italic">Dismissed without rule</span>
-                        <button
-                          type="button"
-                          onClick={() => handleReopenAmbiguity(amb.id)}
-                          className="text-sky-400 hover:text-sky-300 text-[10px] underline"
-                        >
-                          Restore
-                        </button>
-                      </div>
-                    ) : (
-                      /* Actions for Unresolved Gap */
-                      <div className="pt-2 border-t border-amber-800/30 space-y-2">
-                        {/* 1-Click Resolution Options */}
-                        {amb.suggested_options && amb.suggested_options.length > 0 && (
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                              One-Click Resolutions:
-                            </span>
-                            <div className="flex flex-col gap-1">
-                              {amb.suggested_options.map((opt, optIdx) => (
-                                <button
-                                  key={optIdx}
-                                  type="button"
-                                  disabled={isLoading}
-                                  onClick={() => handleResolveAmbiguity(amb.id, opt, 'domain_rules')}
-                                  className="w-full text-left px-2.5 py-1.5 rounded-lg bg-slate-900/90 hover:bg-emerald-950/80 hover:border-emerald-500/60 border border-slate-700/80 text-emerald-300 hover:text-emerald-200 text-[11px] transition-all flex items-center justify-between group"
-                                >
-                                  <span className="truncate">{opt}</span>
-                                  <Check className="w-3 h-3 opacity-0 group-hover:opacity-100 shrink-0 ml-1 text-emerald-400" />
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
 
-                        {/* Custom Resolution Toggle or Form */}
-                        {customResolvingId === amb.id ? (
-                          <div className="space-y-1.5 pt-1.5 bg-slate-950 p-2 rounded-lg border border-slate-800">
-                            <textarea
-                              rows={2}
-                              value={customResolutionText}
-                              onChange={(e) => setCustomResolutionText(e.target.value)}
-                              placeholder="Type custom rule or resolution..."
-                              className="w-full p-1.5 bg-slate-900 border border-slate-700 rounded text-xs text-white focus:outline-none focus:border-sky-500"
-                            />
-                            <div className="flex items-center justify-between gap-1 text-[10px]">
-                              <select
-                                value={customRuleType}
-                                onChange={(e: any) => setCustomRuleType(e.target.value)}
-                                className="bg-slate-900 text-slate-300 border border-slate-700 rounded px-1.5 py-1"
-                              >
-                                <option value="domain_rules">Add to Business Rules</option>
-                                <option value="edge_cases">Add to Edge Cases</option>
-                                <option value="safety_policies">Add to Safety Constraints</option>
-                              </select>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => { setCustomResolvingId(null); setCustomResolutionText(''); }}
-                                  className="px-2 py-1 text-slate-400 hover:text-white"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={!customResolutionText.trim()}
-                                  onClick={() => handleResolveAmbiguity(amb.id, customResolutionText, customRuleType)}
-                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium disabled:opacity-50"
-                                >
-                                  Save Rule
-                                </button>
-                              </div>
+                        {/* Gap Description & Probing Question */}
+                        <p className="text-slate-200 text-sm leading-relaxed">{amb.description}</p>
+                        <p className="italic text-slate-400 bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60">
+                          "{amb.suggested_question}"
+                        </p>
+
+                        {/* Resolution Status or Action Buttons */}
+                        {isResolved ? (
+                          <div className="pt-2 border-t border-emerald-800/30 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                              <Check className="w-4 h-4 shrink-0" />
+                              <span className="truncate max-w-md" title={amb.resolution}>
+                                Resolved: {amb.resolution}
+                              </span>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => handleReopenAmbiguity(amb.id)}
+                              className="text-slate-400 hover:text-white text-xs underline ml-2 shrink-0"
+                            >
+                              Reopen
+                            </button>
+                          </div>
+                        ) : status === 'dismissed' ? (
+                          <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
+                            <span className="text-slate-500 italic">Dismissed without rule</span>
+                            <button
+                              type="button"
+                              onClick={() => handleReopenAmbiguity(amb.id)}
+                              className="text-sky-400 hover:text-sky-300 text-xs underline"
+                            >
+                              Restore
+                            </button>
                           </div>
                         ) : (
-                          <div className="flex items-center justify-between pt-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCustomResolvingId(amb.id);
-                                setCustomResolutionText('');
-                              }}
-                              className="text-[11px] text-sky-400 hover:text-sky-300 underline font-medium"
-                            >
-                              + Custom Decision
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDismissAmbiguity(amb.id)}
-                              className="text-[11px] text-slate-500 hover:text-slate-400"
-                            >
-                              Dismiss
-                            </button>
+                          /* Actions for Unresolved Gap */
+                          <div className="pt-2.5 border-t border-amber-800/30 space-y-2.5">
+                            {/* 1-Click Resolution Options */}
+                            {amb.suggested_options && amb.suggested_options.length > 0 && (
+                              <div className="space-y-1.5">
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                                  One-Click Decisions:
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {amb.suggested_options.map((opt, optIdx) => (
+                                    <button
+                                      key={optIdx}
+                                      type="button"
+                                      disabled={isLoading}
+                                      onClick={() => handleResolveAmbiguity(amb.id, opt, 'domain_rules')}
+                                      className="text-left px-3 py-2 rounded-lg bg-slate-900/90 hover:bg-emerald-950/80 hover:border-emerald-500/60 border border-slate-700/80 text-emerald-300 hover:text-emerald-200 text-xs transition-all flex items-center justify-between group shadow-sm"
+                                    >
+                                      <span className="truncate mr-1.5">{opt}</span>
+                                      <Check className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 shrink-0 text-emerald-400 transition-opacity" />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Custom Resolution Toggle or Form */}
+                            {customResolvingId === amb.id ? (
+                              <div className="space-y-2 pt-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                                <textarea
+                                  rows={2}
+                                  value={customResolutionText}
+                                  onChange={(e) => setCustomResolutionText(e.target.value)}
+                                  placeholder="Type custom rule or policy resolution..."
+                                  className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-sky-500"
+                                />
+                                <div className="flex items-center justify-between gap-2 text-xs">
+                                  <select
+                                    value={customRuleType}
+                                    onChange={(e: any) => setCustomRuleType(e.target.value)}
+                                    className="bg-slate-900 text-slate-300 border border-slate-700 rounded-md px-2 py-1 text-xs"
+                                  >
+                                    <option value="domain_rules">Add to Business Rules</option>
+                                    <option value="edge_cases">Add to Edge Cases</option>
+                                    <option value="safety_policies">Add to Safety Constraints</option>
+                                  </select>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => { setCustomResolvingId(null); setCustomResolutionText(''); }}
+                                      className="px-2.5 py-1 text-slate-400 hover:text-white"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={!customResolutionText.trim()}
+                                      onClick={() => handleResolveAmbiguity(amb.id, customResolutionText, customRuleType)}
+                                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-medium disabled:opacity-50 transition-colors"
+                                    >
+                                      Save Rule
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCustomResolvingId(amb.id);
+                                    setCustomResolutionText('');
+                                  }}
+                                  className="text-xs text-sky-400 hover:text-sky-300 underline font-medium"
+                                >
+                                  + Custom Decision
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDismissAmbiguity(amb.id)}
+                                  className="text-xs text-slate-500 hover:text-slate-400"
+                                >
+                                  Dismiss
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Tab 2 Content: Socratic Chat Assistant */}
+          {activeCanvasTab === 'chat' && (
+            <div className="flex flex-col flex-1 min-h-0">
+              {/* Messages Scroll Area */}
+              <div className="flex-1 p-4 overflow-y-auto space-y-4">
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    {msg.sender === 'bot' && (
+                      <div className="w-8 h-8 rounded-lg bg-sky-600/20 border border-sky-500/30 flex items-center justify-center text-sky-400 shrink-0 mt-0.5">
+                        <Bot className="w-4 h-4" />
+                      </div>
+                    )}
+
+                    <div
+                      className={`max-w-[85%] rounded-xl p-3.5 text-xs leading-relaxed space-y-2.5 ${
+                        msg.sender === 'user'
+                          ? 'bg-sky-600 text-white rounded-br-none shadow-md'
+                          : 'bg-slate-950/80 border border-slate-800 text-slate-200 rounded-bl-none shadow-sm'
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.text}</p>
+
+                      {/* Quick-reply Option Chips with 1-click Add to Criteria */}
+                      {msg.options && msg.options.length > 0 && (
+                        <div className="pt-2 flex flex-wrap gap-2">
+                          {msg.options.map((option, idx) => (
+                            <div
+                              key={idx}
+                              className="inline-flex items-center rounded-lg bg-slate-900 border border-slate-700/80 shadow-sm overflow-hidden"
+                            >
+                              <button
+                                type="button"
+                                disabled={isLoading}
+                                onClick={() => handleSendMessage(option)}
+                                className="px-2.5 py-1.5 text-xs text-sky-300 hover:text-sky-200 hover:bg-sky-950/80 transition-all text-left"
+                                title="Send this response to assistant"
+                              >
+                                {option}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isLoading}
+                                onClick={() => handleQuickAddRule(option)}
+                                className="px-2 py-1.5 bg-slate-800/90 hover:bg-emerald-900/70 hover:text-emerald-300 border-l border-slate-700 text-[10px] text-slate-400 transition-colors font-medium"
+                                title="Add directly to business rules"
+                              >
+                                + Criteria
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {msg.sender === 'user' && (
+                      <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 shrink-0 mt-0.5">
+                        <User className="w-4 h-4" />
                       </div>
                     )}
                   </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+                ))}
 
-        {/* =========================================================================
-            COLUMN 2: SOCRATIC CHAT ASSISTANT (4 COLS)
-            ========================================================================= */}
-        <div className="lg:col-span-4 bg-slate-900/70 border border-slate-800 rounded-xl flex flex-col h-[650px] overflow-hidden shadow-lg">
-          {/* Chat Header */}
-          <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold text-slate-200">Socratic Chat Assistant</span>
-            </div>
-            <span className="text-[11px] text-slate-500 font-mono">Gemini 2.5 ADC</span>
-          </div>
+                {isLoading && (
+                  <div className="flex items-center gap-2 text-slate-400 text-xs py-2 px-1">
+                    <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
+                    <span>Agent is evaluating domain boundaries...</span>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
 
-          {/* Messages Scroll Area */}
-          <div className="flex-1 p-3.5 overflow-y-auto space-y-3.5">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex gap-2.5 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+              {/* Chat Input Bar */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendMessage();
+                }}
+                className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2"
               >
-                {msg.sender === 'bot' && (
-                  <div className="w-7 h-7 rounded-lg bg-sky-600/20 border border-sky-500/30 flex items-center justify-center text-sky-400 shrink-0 mt-0.5">
-                    <Bot className="w-3.5 h-3.5" />
-                  </div>
-                )}
-
-                <div
-                  className={`max-w-[88%] rounded-xl p-3 text-xs leading-relaxed space-y-2 ${
-                    msg.sender === 'user'
-                      ? 'bg-sky-600 text-white rounded-br-none shadow-md'
-                      : 'bg-slate-950/80 border border-slate-800 text-slate-200 rounded-bl-none'
-                  }`}
+                <input
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder="Clarify an edge case, specify exceptions, or ask questions..."
+                  disabled={isLoading}
+                  className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-sky-500 placeholder-slate-500"
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !inputText.trim()}
+                  className="p-2.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center justify-center"
                 >
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
-
-                  {/* Quick-reply Option Chips */}
-                  {msg.options && msg.options.length > 0 && (
-                    <div className="pt-2 flex flex-wrap gap-1.5">
-                      {msg.options.map((option, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          disabled={isLoading}
-                          onClick={() => handleSendMessage(option)}
-                          className="px-2.5 py-1 bg-slate-900 hover:bg-sky-950/80 hover:border-sky-500/50 border border-slate-700/80 rounded-full text-[11px] text-sky-300 hover:text-sky-200 transition-all text-left"
-                        >
-                          {option}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {msg.sender === 'user' && (
-                  <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 shrink-0 mt-0.5">
-                    <User className="w-3.5 h-3.5" />
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {isLoading && (
-              <div className="flex items-center gap-2 text-slate-400 text-xs py-2 px-1">
-                <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
-                <span>Agent is evaluating domain boundaries...</span>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Chat Input Bar */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSendMessage();
-            }}
-            className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2"
-          >
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="Clarify an edge case or ask a question..."
-              disabled={isLoading}
-              className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-sky-500"
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !inputText.trim()}
-              className="p-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white rounded-lg transition-colors"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
+            </div>
+          )}
         </div>
 
         {/* =========================================================================
-            COLUMN 3: CRITERIA WORKBENCH & DIRECT MANUAL CRUD (4 COLS)
+            PANE B (RIGHT, 5 COLS, ~40-42% WIDTH): LIVE CONFIRMED BLUEPRINT & ACTIONS
             ========================================================================= */}
-        <div className="lg:col-span-4 bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-4 h-[650px] overflow-y-auto shadow-lg flex flex-col justify-between">
+        <div className="lg:col-span-5 bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-4 h-[700px] overflow-y-auto shadow-lg flex flex-col justify-between">
           <div className="space-y-4">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">

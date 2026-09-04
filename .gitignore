@@ -28,3 +28,4 @@ eval_logs/
 .inspect/
 data/
 backend/data/
+.chrome_profile/

@@ -124,6 +124,7 @@ export function useEvalStream(evalId: string | null) {
     };
 
     // Resilient Polling Safety Net: Checks status in case SSE connection closes or stalls
+    let unknownCount = 0;
     const pollInterval = setInterval(async () => {
       if (isFinishedRef.current) {
         clearInterval(pollInterval);
@@ -132,7 +133,20 @@ export function useEvalStream(evalId: string | null) {
 
       try {
         const statusRes = await fetch(`/api/eval/${evalId}/status`);
-        if (!statusRes.ok) return;
+        if (!statusRes.ok) {
+          unknownCount++;
+          if (unknownCount > 10) {
+            isFinishedRef.current = true;
+            setState((prev) => ({
+              ...prev,
+              error: 'Evaluation session not found or timed out.',
+              logs: [...prev.logs, '[ERROR] Evaluation status endpoint unreachable.'],
+            }));
+            es.close();
+            clearInterval(pollInterval);
+          }
+          return;
+        }
         const statusData = await statusRes.json();
 
         if (statusData.has_scorecard) {
@@ -151,6 +165,20 @@ export function useEvalStream(evalId: string | null) {
           }));
           es.close();
           clearInterval(pollInterval);
+        } else if (statusData.status === 'unknown') {
+          unknownCount++;
+          if (unknownCount > 10) {
+            isFinishedRef.current = true;
+            setState((prev) => ({
+              ...prev,
+              error: 'Evaluation session not found or expired.',
+              logs: [...prev.logs, '[ERROR] Evaluation session not found on server.'],
+            }));
+            es.close();
+            clearInterval(pollInterval);
+          }
+        } else {
+          unknownCount = 0;
         }
       } catch (pollErr) {
         // Silently continue polling

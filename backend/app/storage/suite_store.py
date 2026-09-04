@@ -69,6 +69,14 @@ class SuiteStore:
         report_file = run_folder / "scorecard_report.json"
         report_file.write_text(report.model_dump_json(indent=2), encoding="utf-8")
 
+        # Also mirror scorecard JSON to data_dir/runs for repository persistence (JSON files do not trigger uvicorn reload)
+        repo_data_runs = settings.data_dir / "runs" / report.eval_id
+        if repo_data_runs.parent.exists():
+            repo_data_runs.mkdir(parents=True, exist_ok=True)
+            (repo_data_runs / "scorecard_report.json").write_text(
+                report.model_dump_json(indent=2), encoding="utf-8"
+            )
+
         # Update suite run list if suite exists
         if report.suite_id:
             suite = self.get_suite(report.suite_id)
@@ -79,7 +87,12 @@ class SuiteStore:
     def get_run_report(self, eval_id: str) -> Optional[ExecutiveScorecardReport]:
         report_file = self.runs_dir / eval_id / "scorecard_report.json"
         if not report_file.exists():
-            return None
+            # Check repository data/runs directory
+            fallback = settings.data_dir / "runs" / eval_id / "scorecard_report.json"
+            if fallback.exists():
+                report_file = fallback
+            else:
+                return None
         try:
             data = json.loads(report_file.read_text(encoding="utf-8"))
             return ExecutiveScorecardReport.model_validate(data)
@@ -88,16 +101,22 @@ class SuiteStore:
             return None
 
     def list_runs(self, suite_id: Optional[str] = None) -> List[ExecutiveScorecardReport]:
-        reports = []
-        for report_file in self.runs_dir.glob("*/scorecard_report.json"):
-            try:
-                data = json.loads(report_file.read_text(encoding="utf-8"))
-                report = ExecutiveScorecardReport.model_validate(data)
-                if not suite_id or report.suite_id == suite_id:
-                    reports.append(report)
-            except Exception as e:
-                logger.warning(f"Error reading report {report_file}: {e}")
-        return sorted(reports, key=lambda r: r.timestamp, reverse=True)
+        reports_map: Dict[str, ExecutiveScorecardReport] = {}
+        for search_dir in [self.runs_dir, settings.data_dir / "runs"]:
+            if not search_dir.exists():
+                continue
+            for report_file in search_dir.glob("*/scorecard_report.json"):
+                eval_id = report_file.parent.name
+                if eval_id in reports_map:
+                    continue
+                try:
+                    data = json.loads(report_file.read_text(encoding="utf-8"))
+                    report = ExecutiveScorecardReport.model_validate(data)
+                    if not suite_id or report.suite_id == suite_id:
+                        reports_map[eval_id] = report
+                except Exception as e:
+                    logger.warning(f"Error reading report {report_file}: {e}")
+        return sorted(reports_map.values(), key=lambda r: r.timestamp, reverse=True)
 
     def compute_regression_delta(
         self, current: ExecutiveScorecardReport, baseline: ExecutiveScorecardReport

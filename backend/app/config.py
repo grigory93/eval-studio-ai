@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_SANDBOX_RUNS_DIR = Path.home() / ".evalstudio" / "runs"
 
 
 class Settings(BaseSettings):
@@ -21,9 +22,12 @@ class Settings(BaseSettings):
     port: int = 8000
     cors_origins: list[str] = ["*"]
 
-    # Storage paths (resolved absolute paths outside backend/ to avoid uvicorn watcher reloads)
+    # Storage paths
+    # Note: runs_dir is placed outside the repository workspace (~/.evalstudio/runs) to guarantee
+    # that uvicorn --reload (which watches the repo directory tree) never detects Python task/worker
+    # script writes and never restarts mid-evaluation.
     data_dir: Path = Path(os.getenv("EVALSTUDIO_DATA_DIR", str(REPO_ROOT / "data"))).resolve()
-    runs_dir: Path = Path(os.getenv("EVALSTUDIO_RUNS_DIR", str(REPO_ROOT / "data" / "runs"))).resolve()
+    runs_dir: Path = Path(os.getenv("EVALSTUDIO_RUNS_DIR", str(DEFAULT_SANDBOX_RUNS_DIR))).resolve()
     suites_dir: Path = Path(os.getenv("EVALSTUDIO_SUITES_DIR", str(REPO_ROOT / "data" / "suites"))).resolve()
 
     # Google Cloud & Vertex AI ADC configuration

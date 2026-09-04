@@ -6,6 +6,9 @@ import {
   dismissAmbiguity,
   getSampleAgents,
   inspectAgent,
+  startEvaluation,
+  getEvalStatus,
+  getScorecardReport,
 } from './api';
 
 describe('Elicitation and Ingest API Client Services', () => {
@@ -194,5 +197,55 @@ describe('Elicitation and Ingest API Client Services', () => {
       }),
     });
     expect(result).toEqual(mockInitiate);
+  });
+
+  it('startEvaluation posts evaluation configuration to /api/eval/start', async () => {
+    const mockResponse = { eval_id: 'eval-xyz123', status: 'running' };
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    const payload = {
+      task_id: 'task-abc',
+      dataset_id: 'ds-123',
+      target_agent_path: 'backend/app/examples/sample_agent.py',
+    };
+
+    const result = await startEvaluation(payload);
+    expect(global.fetch).toHaveBeenCalledWith('/api/eval/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    expect(result).toEqual(mockResponse);
+  });
+
+  it('getEvalStatus queries /api/eval/:evalId/status', async () => {
+    const mockStatus = { eval_id: 'eval-xyz123', status: 'running', has_scorecard: false };
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockStatus,
+    } as Response);
+
+    const result = await getEvalStatus('eval-xyz123');
+    expect(global.fetch).toHaveBeenCalledWith('/api/eval/eval-xyz123/status');
+    expect(result).toEqual(mockStatus);
+  });
+
+  it('getScorecardReport queries /api/scorecard/:evalId', async () => {
+    const mockScorecard = {
+      eval_id: 'eval-xyz123',
+      task_name: 'test_task',
+      metrics: { overall_pass_rate: 0.95 },
+    };
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockScorecard,
+    } as Response);
+
+    const result = await getScorecardReport('eval-xyz123');
+    expect(global.fetch).toHaveBeenCalledWith('/api/scorecard/eval-xyz123');
+    expect(result).toEqual(mockScorecard);
   });
 });

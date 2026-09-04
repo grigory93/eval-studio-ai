@@ -109,7 +109,8 @@ import os
 import sys
 from pathlib import Path
 
-# Add project root and backend to sys.path
+# Add run directory, project root, and backend to sys.path
+sys.path.insert(0, "{str(run_dir)}")
 sys.path.insert(0, "{str(repo_root)}")
 sys.path.insert(0, "{str(backend_dir)}")
 
@@ -188,8 +189,17 @@ if __name__ == "__main__":
                 read_stream(process.stderr, is_err=True),
             )
 
-            await process.wait()
-            self.active_processes.pop(eval_id, None)
+            try:
+                await asyncio.wait_for(process.wait(), timeout=settings.worker_timeout_seconds)
+            except asyncio.TimeoutError:
+                logger.error(f"Evaluation worker timed out after {settings.worker_timeout_seconds}s for eval_id={eval_id}")
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+                raise TimeoutError(f"Evaluation worker process timed out after {settings.worker_timeout_seconds} seconds.")
+            finally:
+                self.active_processes.pop(eval_id, None)
 
             # Parse results and build scorecard with live per-sample streaming
             scorecard = await self._generate_scorecard_from_run(
@@ -392,6 +402,7 @@ if __name__ == "__main__":
                         "current_category": cat,
                     },
                 )
+                await asyncio.sleep(0.015)
 
         overall_pass_rate = round(passed_count / total_samples, 3)
 

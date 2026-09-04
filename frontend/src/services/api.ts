@@ -245,6 +245,14 @@ export async function startEvaluation(payload: {
   return res.json();
 }
 
+export async function getEvalStatus(
+  evalId: string
+): Promise<{ eval_id: string; status: string; has_scorecard: boolean }> {
+  const res = await fetch(`${BASE_URL}/eval/${evalId}/status`);
+  if (!res.ok) throw new Error('Failed to load evaluation status');
+  return res.json();
+}
+
 export async function getScorecardReport(evalId: string): Promise<ExecutiveScorecardReport> {
   const res = await fetch(`${BASE_URL}/scorecard/${evalId}`);
   if (!res.ok) throw new Error('Failed to load scorecard');

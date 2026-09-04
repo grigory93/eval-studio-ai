@@ -17,6 +17,9 @@ describe('ChatInterface Component', () => {
   const sampleDoc: RequirementDocModel = {
     doc_id: 'doc-123',
     filename: 'refund_policy.md',
+    content_type: 'text/markdown',
+    extracted_text: 'Returns accepted within 30 days of purchase.',
+    uploaded_at: '2026-09-04T15:00:00Z',
     sections: {
       'Returns': 'Returns accepted within 30 days of purchase.',
     },

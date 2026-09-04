@@ -11,6 +11,7 @@ import {
   TrendingUp,
   TrendingDown,
   Layers,
+  X,
 } from 'lucide-react';
 import { ExecutiveScorecardReport, SampleInspectionResult } from '../../types';
 import { FailureClusterList } from './FailureClusterList';
@@ -25,13 +26,25 @@ export const ScorecardDashboard: React.FC<ScorecardDashboardProps> = ({
   scorecard,
   onReEvaluate,
 }) => {
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [filterPassed, setFilterPassed] = useState<'all' | 'passed' | 'failed'>('all');
   const [selectedSample, setSelectedSample] = useState<SampleInspectionResult | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const { metrics, failure_clusters, actionable_recommendations, comparative_delta } = scorecard;
 
-  const filteredSamples = scorecard.sample_details.filter((s) => {
+  // Base samples filtered by selected category (if any)
+  const categorySamples = selectedCategory
+    ? scorecard.sample_details.filter((s) => s.category === selectedCategory)
+    : scorecard.sample_details;
+
+  // Dynamically calculate counts within the active category scope
+  const categoryTotalCount = categorySamples.length;
+  const categoryPassedCount = categorySamples.filter((s) => s.passed).length;
+  const categoryFailedCount = categorySamples.filter((s) => !s.passed).length;
+
+  // Multiplicative filter applying status filter (all | passed | failed)
+  const filteredSamples = categorySamples.filter((s) => {
     if (filterPassed === 'passed') return s.passed;
     if (filterPassed === 'failed') return !s.passed;
     return true;
@@ -56,7 +69,7 @@ export const ScorecardDashboard: React.FC<ScorecardDashboardProps> = ({
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-medium mb-1">
             <Sparkles className="w-3.5 h-3.5" />
-            Step 6: Executive Evaluation Scorecard & Diagnostics
+            Step 7: Executive Evaluation Scorecard & Diagnostics
           </div>
           <h2 className="text-2xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
             <Award className="w-6 h-6 text-sky-400" />
@@ -179,10 +192,22 @@ export const ScorecardDashboard: React.FC<ScorecardDashboardProps> = ({
                 Category Pass Rate Distribution (Inspect AI Grouped Metrics)
               </h3>
             </div>
+            {selectedCategory && (
+              <button
+                type="button"
+                onClick={() => setSelectedCategory(null)}
+                className="text-[11px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-sky-500/10 border border-sky-500/20"
+                title="Reset category filter"
+              >
+                <span>Reset filter</span>
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
 
-          <div className="space-y-3 pt-1">
+          <div className="space-y-2 pt-1">
             {Object.entries(metrics.category_pass_rates).map(([cat, rate]) => {
+              const isSelected = selectedCategory === cat;
               const pct = Math.round(rate * 100);
               const colorClass =
                 pct >= 90
@@ -192,9 +217,27 @@ export const ScorecardDashboard: React.FC<ScorecardDashboardProps> = ({
                   : 'bg-rose-500';
 
               return (
-                <div key={cat} className="space-y-1">
-                  <div className="flex justify-between text-xs font-mono">
-                    <span className="text-slate-300 font-semibold">{cat}</span>
+                <div
+                  key={cat}
+                  onClick={() => setSelectedCategory(isSelected ? null : cat)}
+                  className={`p-2.5 rounded-lg cursor-pointer transition-all ${
+                    isSelected
+                      ? 'bg-sky-950/50 border border-sky-500/50 ring-2 ring-sky-500/30 shadow-md'
+                      : 'border border-transparent hover:bg-slate-800/60 hover:border-slate-700/80'
+                  }`}
+                  title={isSelected ? 'Click to deselect category filter' : `Click to filter sample inspector by ${cat}`}
+                >
+                  <div className="flex justify-between text-xs font-mono mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`font-semibold ${isSelected ? 'text-sky-300' : 'text-slate-300'}`}>
+                        {cat}
+                      </span>
+                      {isSelected && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/30 text-sky-200 font-sans font-medium">
+                          Active Filter
+                        </span>
+                      )}
+                    </div>
                     <span className={pct >= 90 ? 'text-emerald-400 font-bold' : pct >= 70 ? 'text-amber-400 font-bold' : 'text-rose-400 font-bold'}>
                       {pct}%
                     </span>
@@ -254,11 +297,27 @@ export const ScorecardDashboard: React.FC<ScorecardDashboardProps> = ({
       {/* Interactive Sample Inspector Table */}
       <div className="space-y-4 bg-slate-900/60 border border-slate-800 rounded-xl p-5 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <h3 className="text-sm font-bold text-slate-200">Sample Execution Inspector</h3>
             <span className="text-xs text-slate-500 font-mono">
-              ({filteredSamples.length} samples)
+              ({filteredSamples.length} {filteredSamples.length === 1 ? 'sample' : 'samples'})
             </span>
+
+            {/* Active Category Filter Chip */}
+            {selectedCategory && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-500/40 text-sky-300 text-xs font-medium">
+                <span>Category: <strong className="font-semibold text-white">{selectedCategory}</strong></span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory(null)}
+                  className="hover:text-white p-0.5 rounded-full hover:bg-sky-500/30 transition-colors"
+                  title="Clear category filter"
+                  aria-label="Clear category filter"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            )}
           </div>
 
           <div className="inline-flex p-1 bg-slate-950 border border-slate-800 rounded-lg text-xs">
@@ -266,28 +325,28 @@ export const ScorecardDashboard: React.FC<ScorecardDashboardProps> = ({
               type="button"
               onClick={() => setFilterPassed('all')}
               className={`px-3 py-1 rounded transition-colors ${
-                filterPassed === 'all' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                filterPassed === 'all' ? 'bg-sky-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              All ({scorecard.sample_details.length})
+              All ({categoryTotalCount})
             </button>
             <button
               type="button"
               onClick={() => setFilterPassed('passed')}
               className={`px-3 py-1 rounded transition-colors ${
-                filterPassed === 'passed' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                filterPassed === 'passed' ? 'bg-emerald-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Passed ({scorecard.metrics.passed_samples})
+              Passed ({categoryPassedCount})
             </button>
             <button
               type="button"
               onClick={() => setFilterPassed('failed')}
               className={`px-3 py-1 rounded transition-colors ${
-                filterPassed === 'failed' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                filterPassed === 'failed' ? 'bg-rose-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Failed ({scorecard.metrics.failed_samples + scorecard.metrics.errored_samples})
+              Failed ({categoryFailedCount})
             </button>
           </div>
         </div>
@@ -305,51 +364,83 @@ export const ScorecardDashboard: React.FC<ScorecardDashboardProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
-              {filteredSamples.map((sample) => (
-                <tr
-                  key={sample.sample_id}
-                  onClick={() => {
-                    setSelectedSample(sample);
-                    setIsModalOpen(true);
-                  }}
-                  className="hover:bg-slate-800/50 cursor-pointer transition-colors"
-                >
-                  <td className="py-2.5 px-3">
-                    {sample.passed ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    ) : (
-                      <XCircle className="w-4 h-4 text-rose-400" />
-                    )}
-                  </td>
-                  <td className="py-2.5 px-3 font-mono text-sky-400 font-medium">
-                    {sample.sample_id}
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <span className="px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-[10px] text-slate-300">
-                      {sample.category}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3 text-slate-200 max-w-xs truncate" title={sample.input}>
-                    {sample.input}
-                  </td>
-                  <td
-                    className={`py-2.5 px-3 max-w-sm truncate font-mono text-[11px] ${
-                      sample.passed ? 'text-slate-400' : 'text-rose-300 font-semibold'
-                    }`}
-                    title={sample.judge_reasoning}
-                  >
-                    {sample.judge_reasoning}
-                  </td>
-                  <td className="py-2.5 px-3 text-right">
-                    <button
-                      type="button"
-                      className="text-sky-400 hover:text-sky-300 font-medium text-xs underline"
-                    >
-                      Inspect
-                    </button>
+              {filteredSamples.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center justify-center space-y-2">
+                      <CheckCircle2 className="w-7 h-7 text-slate-600" />
+                      <p className="text-xs text-slate-400 font-medium">No test samples match the selected filter criteria.</p>
+                      {selectedCategory && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCategory(null)}
+                          className="text-xs text-sky-400 hover:underline pt-1"
+                        >
+                          Clear category filter ({selectedCategory})
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredSamples.map((sample) => (
+                  <tr
+                    key={sample.sample_id}
+                    onClick={() => {
+                      setSelectedSample(sample);
+                      setIsModalOpen(true);
+                    }}
+                    className="hover:bg-slate-800/50 cursor-pointer transition-colors"
+                  >
+                    <td className="py-2.5 px-3">
+                      {sample.passed ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-rose-400" />
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-sky-400 font-medium">
+                      {sample.sample_id}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCategory(selectedCategory === sample.category ? null : sample.category);
+                        }}
+                        className={`px-2 py-0.5 rounded-full text-[10px] transition-colors ${
+                          selectedCategory === sample.category
+                            ? 'bg-sky-600 text-white font-semibold'
+                            : 'bg-slate-950 border border-slate-800 text-slate-300 hover:border-sky-500/50 hover:text-sky-300'
+                        }`}
+                        title={selectedCategory === sample.category ? 'Click to deselect' : `Filter by category ${sample.category}`}
+                      >
+                        {sample.category}
+                      </button>
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-200 max-w-xs truncate" title={sample.input}>
+                      {sample.input}
+                    </td>
+                    <td
+                      className={`py-2.5 px-3 max-w-sm truncate font-mono text-[11px] ${
+                        sample.passed ? 'text-slate-400' : 'text-rose-300 font-semibold'
+                      }`}
+                      title={sample.judge_reasoning}
+                    >
+                      {sample.judge_reasoning}
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      <button
+                        type="button"
+                        className="text-sky-400 hover:text-sky-300 font-medium text-xs underline"
+                      >
+                        Inspect
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

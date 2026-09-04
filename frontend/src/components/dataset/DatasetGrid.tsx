@@ -145,7 +145,7 @@ export const DatasetGrid: React.FC<DatasetGridProps> = ({
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-medium mb-1">
             <Sparkles className="w-3.5 h-3.5" />
-            Step 3: Synthesized Dataset Matrix
+            Step 4: Synthesized Dataset Matrix
           </div>
           <h2 className="text-2xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
             <Database className="w-6 h-6 text-sky-400" />

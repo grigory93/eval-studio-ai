@@ -48,7 +48,7 @@ export const LiveProgress: React.FC<LiveProgressProps> = ({
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium mb-1">
             <Activity className="w-3.5 h-3.5 animate-spin" />
-            Step 5: Live Execution & Sandboxed Evaluation
+            Step 6: Live Execution & Sandboxed Evaluation
           </div>
           <h2 className="text-2xl font-bold text-slate-100 tracking-tight">
             Executing {taskName}

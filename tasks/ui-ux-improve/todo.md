@@ -9,7 +9,7 @@ Follows the planning-and-task-breakdown specification.
 - **Phase 1: Dedicated Target Agent Selection Step (Step 1)** -> [x] COMPLETED
 - **Phase 2: Task View Code & Dataset Samples Decoupling (Step 5)** -> [x] COMPLETED
 - **Phase 3: Socratic Elicitation Workbench Simplification (Step 3)** -> [x] COMPLETED
-- **Phase 4: Scorecard Category-Grouped Filtering (Step 7)** -> [ ] PENDING
+- **Phase 4: Scorecard Category-Grouped Filtering (Step 7)** -> [x] COMPLETED
 - **Phase 5: Verification & Quality Gate** -> [ ] PENDING
 
 ---
@@ -220,18 +220,19 @@ Follows the planning-and-task-breakdown specification.
 **Description:** Make the category bars in "Category Pass Rate Distribution" interactive in `frontend/src/components/scorecard/ScorecardDashboard.tsx`. Clicking any category row toggles `selectedCategory` state, with distinct hover and active highlight styles.
 
 **Acceptance criteria:**
-- [ ] Category rows have hover effect and pointer cursor.
-- [ ] Active category shows highlighted background (`bg-sky-950/40`), border (`border-sky-500/50`), and selection indicator.
-- [ ] Clicking the selected category again deselects it.
+- [x] Category rows have hover effect and pointer cursor.
+- [x] Active category shows highlighted background (`bg-sky-950/40`), border (`border-sky-500/50`), and selection indicator.
+- [x] Clicking the selected category again deselects it.
 
 **Verification:**
-- [ ] Build succeeds: `cd frontend && npm run build`
-- [ ] Manual check: Clicking category bars toggles selection state.
+- [x] Build succeeds: `cd frontend && npm run build`
+- [x] Manual check: Clicking category bars toggles selection state.
 
 **Dependencies:** None
 
 **Files likely touched:**
 - `frontend/src/components/scorecard/ScorecardDashboard.tsx`
+- `frontend/src/components/scorecard/ScorecardDashboard.test.tsx`
 
 **Estimated scope:** Small (1 file)
 
@@ -242,29 +243,30 @@ Follows the planning-and-task-breakdown specification.
 **Description:** Implement multiplicative filtering (`selectedCategory` + `filterPassed`) in the Sample Execution Inspector table in `frontend/src/components/scorecard/ScorecardDashboard.tsx`. Add an active category filter chip (`Category: [Name ✕]`) in the table toolbar with smooth deselecting, and dynamically recalculate `All`, `Passed`, and `Failed` count badges based on the active category.
 
 **Acceptance criteria:**
-- [ ] Table toolbar displays active category chip with a 1-click clear (`✕`) button.
-- [ ] Deselecting via chip or re-clicking category bar clears filter smoothly without layout jitter.
-- [ ] Status buttons (`All`, `Passed`, `Failed`) dynamically update counts for the selected category.
-- [ ] Sample table rows filter accurately by both category and pass/fail status.
+- [x] Table toolbar displays active category chip with a 1-click clear (`✕`) button.
+- [x] Deselecting via chip or re-clicking category bar clears filter smoothly without layout jitter.
+- [x] Status buttons (`All`, `Passed`, `Failed`) dynamically update counts for the selected category.
+- [x] Sample table rows filter accurately by both category and pass/fail status.
 
 **Verification:**
-- [ ] Build succeeds: `cd frontend && npm run build`
-- [ ] Manual check: Select a category (e.g. `adversarial`), verify only those samples appear and counts match; click `✕` to verify smooth return to all samples.
+- [x] Build succeeds: `cd frontend && npm run build`
+- [x] Manual check: Select a category (e.g. `adversarial`), verify only those samples appear and counts match; click `✕` to verify smooth return to all samples.
 
 **Dependencies:** Task 8
 
 **Files likely touched:**
 - `frontend/src/components/scorecard/ScorecardDashboard.tsx`
+- `frontend/src/components/scorecard/ScorecardDashboard.test.tsx`
 
 **Estimated scope:** Medium (1 file)
 
 ---
 
 ## Checkpoint: After Tasks 8-9 (Phase 4 Complete)
-- [ ] Frontend builds cleanly (`npm run build`).
-- [ ] Category selection and smooth deselection in Scorecard verified.
-- [ ] Dual-axis filtering and dynamic count recalculations verified.
-- [ ] Review with user before proceeding to Phase 5.
+- [x] Frontend builds cleanly (`npm run build`).
+- [x] Category selection and smooth deselection in Scorecard verified.
+- [x] Dual-axis filtering and dynamic count recalculations verified.
+- [x] Unit tests pass: `npx vitest run src/components/scorecard/ScorecardDashboard.test.tsx`.
 
 ---
 
